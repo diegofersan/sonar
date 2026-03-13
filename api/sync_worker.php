@@ -3,7 +3,8 @@
  * Background sync worker - runs as CLI process.
  * Fetches ONLY tasks assigned to the user (not all list tasks).
  *
- * Usage: php sync_worker.php <token> <workspace_id> <list_id> <user_id> <log_id>
+ * Usage: CLICKUP_TOKEN=xxx php sync_worker.php <workspace_id> <list_id> <user_id> <log_id>
+ * Legacy: php sync_worker.php <token> <workspace_id> <list_id> <user_id> <log_id>
  */
 error_reporting(E_ALL & ~E_DEPRECATED);
 ini_set('max_execution_time', '120');
@@ -15,11 +16,21 @@ if (php_sapi_name() !== 'cli') {
 require_once __DIR__ . '/../includes/clickup.php';
 require_once __DIR__ . '/../includes/database.php';
 
-$token       = $argv[1] ?? '';
-$workspaceId = $argv[2] ?? '';
-$listId      = $argv[3] ?? '';
-$userId      = $argv[4] ?? '';
-$logId       = (int) ($argv[5] ?? 0);
+// Token is passed via environment variable (preferred) or as first CLI arg (legacy)
+$envToken = getenv('CLICKUP_TOKEN');
+if ($envToken) {
+    $token       = $envToken;
+    $workspaceId = $argv[1] ?? '';
+    $listId      = $argv[2] ?? '';
+    $userId      = $argv[3] ?? '';
+    $logId       = (int) ($argv[4] ?? 0);
+} else {
+    $token       = $argv[1] ?? '';
+    $workspaceId = $argv[2] ?? '';
+    $listId      = $argv[3] ?? '';
+    $userId      = $argv[4] ?? '';
+    $logId       = (int) ($argv[5] ?? 0);
+}
 
 if (!$token || !$workspaceId || !$listId || !$logId) {
     exit(1);

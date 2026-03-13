@@ -7,6 +7,7 @@
 ini_set('display_errors', '0');
 error_reporting(E_ALL & ~E_DEPRECATED);
 header('Content-Type: application/json; charset=utf-8');
+header('X-Content-Type-Options: nosniff');
 
 try {
     require_once __DIR__ . '/../includes/session.php';
@@ -37,6 +38,7 @@ try {
     echo json_encode(['workspaces' => $teams]);
 
 } catch (\Throwable $e) {
+    error_log('Sonar error: ' . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['error' => $e->getMessage()]);
+    echo json_encode(['error' => 'An internal error occurred']);
 }

@@ -4,8 +4,10 @@
  */
 
 require_once __DIR__ . '/includes/session.php';
+require_once __DIR__ . '/includes/security.php';
 
 init_session();
+send_security_headers();
 
 if (!is_authenticated()) {
     header('Location: /login.php');
@@ -26,6 +28,7 @@ $userName = htmlspecialchars($user['username'] ?? $user['name'] ?? 'User', ENT_Q
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
     <title>Sonar — Workspace</title>
     <link rel="stylesheet" href="/assets/css/style.css">
 </head>

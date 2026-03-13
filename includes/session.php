@@ -4,13 +4,43 @@
  */
 
 /**
- * Start session if not already started.
+ * Start session if not already started, with hardened cookie settings.
  */
 function init_session(): void
 {
     if (session_status() === PHP_SESSION_NONE) {
+        ini_set('session.use_strict_mode', '1');
+
+        session_set_cookie_params([
+            'lifetime' => 0,
+            'path'     => '/',
+            'secure'   => true,
+            'httponly'  => true,
+            'samesite' => 'Lax',
+        ]);
+
         session_start();
     }
+
+    // Absolute timeout: destroy sessions older than 8 hours
+    if (isset($_SESSION['created_at']) && (time() - $_SESSION['created_at']) > 28800) {
+        clear_session();
+        return;
+    }
+
+    // Inactivity timeout: destroy sessions idle for more than 2 hours
+    if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) > 7200) {
+        clear_session();
+        return;
+    }
+
+    // Set created_at on first session creation
+    if (!isset($_SESSION['created_at'])) {
+        $_SESSION['created_at'] = time();
+    }
+
+    // Update last activity timestamp
+    $_SESSION['last_activity'] = time();
 }
 
 /**
@@ -40,6 +70,7 @@ function get_token(): ?string
 function set_auth(string $token, array $user): void
 {
     init_session();
+    session_regenerate_id(true);
     $_SESSION['clickup_token'] = $token;
     $_SESSION['clickup_user']  = $user;
 }
@@ -79,7 +110,9 @@ function get_workspace(): ?array
  */
 function clear_session(): void
 {
-    init_session();
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
     $_SESSION = [];
 
     if (ini_get('session.use_cookies')) {
@@ -96,4 +129,49 @@ function clear_session(): void
     }
 
     session_destroy();
+}
+
+/**
+ * Return the CSRF token for the current session, generating one if needed.
+ */
+function csrf_token(): string
+{
+    init_session();
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+/**
+ * Validate a CSRF token against the session token.
+ */
+function validate_csrf(?string $token): bool
+{
+    init_session();
+    if (empty($token) || empty($_SESSION['csrf_token'])) {
+        return false;
+    }
+    return hash_equals($_SESSION['csrf_token'], $token);
+}
+
+/**
+ * Read and validate the CSRF token from the X-CSRF-Token header or JSON body
+ * field `_csrf`. Sends 403 and exits if validation fails.
+ */
+function require_csrf(): void
+{
+    $token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? null;
+
+    if (empty($token)) {
+        $body = json_decode(file_get_contents('php://input'), true);
+        $token = $body['_csrf'] ?? null;
+    }
+
+    if (!validate_csrf($token)) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'Invalid or missing CSRF token.']);
+        exit;
+    }
 }

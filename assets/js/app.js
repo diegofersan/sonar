@@ -45,8 +45,12 @@
   /* ---------- API Helpers ---------- */
 
   async function apiFetch(url, options = {}) {
+    var csrfToken = document.querySelector('meta[name="csrf-token"]');
     const defaults = {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken ? csrfToken.getAttribute('content') : '',
+      },
       credentials: 'same-origin',
     };
     const config = { ...defaults, ...options };
@@ -177,9 +181,14 @@
     var btn = document.getElementById('btn-logout');
     if (!btn) return;
 
-    btn.addEventListener('click', function (e) {
+    btn.addEventListener('click', async function (e) {
       e.preventDefault();
-      window.location.href = '/api/logout.php';
+      try {
+        await apiFetch('/api/logout.php', { method: 'POST' });
+      } catch (err) {
+        // Ignore errors on logout
+      }
+      window.location.href = '/login.php';
     });
   }
 
@@ -456,9 +465,10 @@
     }
     var priorityBadge = '';
     if (task.priority_id) {
+      var safePriority = parseInt(task.priority_id) || 0;
       var labels = { 1: 'Urgente', 2: 'Alta', 3: 'Normal', 4: 'Baixa' };
-      priorityBadge = '<span class="priority-badge priority-' + task.priority_id + '">' +
-        (labels[task.priority_id] || '') + '</span>';
+      priorityBadge = '<span class="priority-badge priority-' + safePriority + '">' +
+        escapeHtml(labels[safePriority] || '') + '</span>';
     }
     var dueDate = formatDueDate(task.due_date);
     var urgencyBadge = '';
@@ -467,12 +477,12 @@
       if (task.urgency_score >= 70) urgencyClass = 'urgency-critical';
       else if (task.urgency_score >= 50) urgencyClass = 'urgency-high';
       else if (task.urgency_score >= 30) urgencyClass = 'urgency-medium';
-      urgencyBadge = '<span class="urgency-badge ' + urgencyClass + '">' + task.urgency_score + '</span>';
+      urgencyBadge = '<span class="urgency-badge ' + urgencyClass + '">' + escapeHtml(String(task.urgency_score || 0)) + '</span>';
     }
 
     var classes = 'task-card';
     if (isCancelled) classes += ' cancelled';
-    if (task.priority_id) classes += ' priority-' + task.priority_id;
+    if (task.priority_id) classes += ' priority-' + (parseInt(task.priority_id) || 0);
 
     return '<div class="' + classes + '">' +
       '<div class="card-top-row">' + leTag + copyIndicator + urgencyBadge + '</div>' +

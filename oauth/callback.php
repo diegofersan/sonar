@@ -9,6 +9,19 @@ require_once __DIR__ . '/../includes/clickup.php';
 
 init_session();
 
+// Verify the state parameter to prevent CSRF attacks
+$state = $_GET['state'] ?? null;
+$expectedState = $_SESSION['oauth_state'] ?? null;
+
+if (empty($state) || empty($expectedState) || !hash_equals($expectedState, $state)) {
+    unset($_SESSION['oauth_state']);
+    header('Location: ../login.php?error=' . urlencode('Invalid OAuth state. Please try again.'));
+    exit;
+}
+
+// State validated -- remove it so it cannot be reused
+unset($_SESSION['oauth_state']);
+
 // ClickUp sends the code as a query parameter
 $code = $_GET['code'] ?? null;
 

@@ -4,8 +4,10 @@
  */
 
 require_once __DIR__ . '/includes/session.php';
+require_once __DIR__ . '/includes/security.php';
 
 init_session();
+send_security_headers();
 
 // Already logged in? Go to dashboard.
 if (is_authenticated()) {

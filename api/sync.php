@@ -6,6 +6,7 @@
 ini_set('display_errors', '0');
 error_reporting(E_ALL & ~E_DEPRECATED);
 header('Content-Type: application/json; charset=utf-8');
+header('X-Content-Type-Options: nosniff');
 
 try {
     require_once __DIR__ . '/../includes/session.php';
@@ -49,6 +50,18 @@ try {
         exit;
     }
 
+    // Read body once (php://input can only be read once)
+    $rawBody = file_get_contents('php://input');
+    $input = json_decode($rawBody, true) ?: [];
+
+    // CSRF validation for state-changing request
+    $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? ($input['_csrf'] ?? null);
+    if (empty($csrfToken) || !hash_equals($_SESSION['csrf_token'] ?? '', $csrfToken)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Invalid or missing CSRF token.']);
+        exit;
+    }
+
     $token = get_token();
     $workspace = get_workspace();
     $user = get_user();
@@ -59,22 +72,32 @@ try {
         exit;
     }
 
-    $input = json_decode(file_get_contents('php://input'), true) ?: [];
-    $listId = $input['list_id'] ?? '46726233';
     $workspaceId = $workspace['id'];
+
+    // Rate limit: reject if a sync is already running for this workspace
+    $stmtRunning = db()->prepare(
+        "SELECT id FROM sync_log WHERE workspace_id = ? AND status = 'running' LIMIT 1"
+    );
+    $stmtRunning->execute([$workspaceId]);
+    if ($stmtRunning->fetch()) {
+        http_response_code(429);
+        echo json_encode(['error' => 'A sync is already running. Please wait for it to finish.']);
+        exit;
+    }
+    $listId = $input['list_id'] ?? '46726233';
     $userId = $user['id'] ?? '';
 
     // Create sync log entry
     $logId = db_log_sync_start($workspaceId, $userId, $listId);
 
-    // Launch background sync process
+    // Launch background sync process — pass token via environment variable
     $phpBin = PHP_BINARY;
     $script = __DIR__ . '/sync_worker.php';
     $cmd = sprintf(
-        '%s %s %s %s %s %s %d > /dev/null 2>&1 &',
+        'CLICKUP_TOKEN=%s %s %s %s %s %s %d > /dev/null 2>&1 &',
+        escapeshellarg($token),
         escapeshellarg($phpBin),
         escapeshellarg($script),
-        escapeshellarg($token),
         escapeshellarg($workspaceId),
         escapeshellarg($listId),
         escapeshellarg($userId),
@@ -90,6 +113,7 @@ try {
     ]);
 
 } catch (\Throwable $e) {
+    error_log('Sonar error: ' . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['error' => $e->getMessage()]);
+    echo json_encode(['error' => 'An internal error occurred']);
 }

@@ -31,7 +31,7 @@ function db(): PDO
 
     $dataDir = __DIR__ . '/../data';
     if (!is_dir($dataDir)) {
-        mkdir($dataDir, 0755, true);
+        mkdir($dataDir, 0700, true);
     }
 
     $dbPath = $dataDir . '/sonar.db';
