@@ -16,20 +16,21 @@ if (php_sapi_name() !== 'cli') {
 require_once __DIR__ . '/../includes/clickup.php';
 require_once __DIR__ . '/../includes/database.php';
 
-// Token is passed via environment variable (preferred) or as first CLI arg (legacy)
-$envToken = getenv('CLICKUP_TOKEN');
-if ($envToken) {
-    $token       = $envToken;
-    $workspaceId = $argv[1] ?? '';
-    $listId      = $argv[2] ?? '';
-    $userId      = $argv[3] ?? '';
-    $logId       = (int) ($argv[4] ?? 0);
-} else {
-    $token       = $argv[1] ?? '';
-    $workspaceId = $argv[2] ?? '';
-    $listId      = $argv[3] ?? '';
-    $userId      = $argv[4] ?? '';
-    $logId       = (int) ($argv[5] ?? 0);
+// Token is passed via temp file (first arg is file path)
+$tokenSource = $argv[1] ?? '';
+$workspaceId = $argv[2] ?? '';
+$listId      = $argv[3] ?? '';
+$userId      = $argv[4] ?? '';
+$logId       = (int) ($argv[5] ?? 0);
+
+// Read token from file, then delete the file
+$token = '';
+if ($tokenSource && is_file($tokenSource)) {
+    $token = trim(file_get_contents($tokenSource));
+    unlink($tokenSource);
+} elseif ($tokenSource) {
+    // Legacy fallback: token passed directly as arg
+    $token = $tokenSource;
 }
 
 if (!$token || !$workspaceId || !$listId || !$logId) {

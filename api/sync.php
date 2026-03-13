@@ -105,14 +105,19 @@ try {
     // Create sync log entry
     $logId = db_log_sync_start($workspaceId, $userId, $listId);
 
-    // Launch background sync process — pass token via environment variable
+    // Launch background sync process
+    // Write token to a temp file (avoids exposing it in process list or shell env issues)
+    $tokenFile = tempnam(sys_get_temp_dir(), 'sonar_token_');
+    file_put_contents($tokenFile, $token);
+    chmod($tokenFile, 0600);
+
     $phpBin = PHP_BINARY;
     $script = __DIR__ . '/sync_worker.php';
     $cmd = sprintf(
-        'CLICKUP_TOKEN=%s %s %s %s %s %s %d > /dev/null 2>&1 &',
-        escapeshellarg($token),
+        '%s %s %s %s %s %s %d > /dev/null 2>&1 &',
         escapeshellarg($phpBin),
         escapeshellarg($script),
+        escapeshellarg($tokenFile),
         escapeshellarg($workspaceId),
         escapeshellarg($listId),
         escapeshellarg($userId),
