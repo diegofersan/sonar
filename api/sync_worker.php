@@ -38,6 +38,12 @@ if (!$token || !$workspaceId || !$listId || !$logId) {
 }
 
 try {
+    // Remove all assignee entries for this user so unassigned tasks disappear
+    if ($userId) {
+        $stmtClear = db()->prepare('DELETE FROM task_assignees WHERE user_id = ?');
+        $stmtClear->execute([$userId]);
+    }
+
     $totalTasks = 0;
     $page = 0;
     $hasMore = true;
