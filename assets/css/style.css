@@ -791,6 +791,31 @@ a {
   animation: spin 1s linear infinite;
 }
 
+/* Force sync bar */
+.force-sync-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(255, 152, 0, 0.1);
+  border: 1px solid rgba(255, 152, 0, 0.3);
+  border-radius: var(--radius-btn);
+  font-size: 0.75rem;
+  color: #ff9800;
+}
+
+.btn-force-sync {
+  background: #ff9800 !important;
+  color: #fff !important;
+  border: none !important;
+  white-space: nowrap;
+}
+
+.btn-force-sync:hover {
+  background: #e68a00 !important;
+}
+
 /* ---------- Calendar View ---------- */
 
 .calendar-nav {

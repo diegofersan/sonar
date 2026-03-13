@@ -546,28 +546,54 @@
     var btn = document.getElementById('btn-sync');
     if (!btn) return;
 
-    btn.addEventListener('click', async function() {
-      btn.disabled = true;
-      btn.classList.add('syncing');
-      var originalText = btn.innerHTML;
-      btn.innerHTML = '<span class="loading-spinner" style="width:16px;height:16px;border-width:2px;"></span> A sincronizar...';
+    btn.addEventListener('click', function() {
+      startSync(btn, false);
+    });
+  }
 
-      try {
-        // Start background sync
-        await apiFetch('/api/sync.php', {
-          method: 'POST',
-          body: JSON.stringify({}),
-        });
-        Toast.show('Sync iniciado...');
+  async function startSync(btn, force) {
+    btn.disabled = true;
+    btn.classList.add('syncing');
+    var originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="loading-spinner" style="width:16px;height:16px;border-width:2px;"></span> A sincronizar...';
 
-        // Poll for completion
-        await pollSyncStatus(btn, originalText);
-      } catch (err) {
+    try {
+      await apiFetch('/api/sync.php', {
+        method: 'POST',
+        body: JSON.stringify(force ? { force: true } : {}),
+      });
+      Toast.show(force ? 'Sync forcado iniciado...' : 'Sync iniciado...');
+      await pollSyncStatus(btn, originalText);
+    } catch (err) {
+      // If 429 (already running), show force button
+      if (err.message && err.message.indexOf('already running') !== -1) {
+        btn.disabled = false;
+        btn.classList.remove('syncing');
+        btn.innerHTML = originalText;
+        showForceSync(btn);
+      } else {
         Toast.error('Erro no sync: ' + err.message);
         btn.disabled = false;
         btn.classList.remove('syncing');
         btn.innerHTML = originalText;
       }
+    }
+  }
+
+  function showForceSync(btn) {
+    var existing = document.getElementById('force-sync-bar');
+    if (existing) existing.remove();
+
+    var bar = document.createElement('div');
+    bar.id = 'force-sync-bar';
+    bar.className = 'force-sync-bar';
+    bar.innerHTML = '<span>Ja existe um sync a correr.</span>' +
+      '<button class="btn btn-sm btn-force-sync" id="btn-force-sync">Forcar novo sync</button>';
+    btn.parentNode.appendChild(bar);
+
+    document.getElementById('btn-force-sync').addEventListener('click', function() {
+      bar.remove();
+      startSync(btn, true);
     });
   }
 

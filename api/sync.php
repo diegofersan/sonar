@@ -81,15 +81,23 @@ try {
     );
     $stmtStale->execute([$workspaceId, $staleTimeout]);
 
-    // Rate limit: reject if a sync is already running for this workspace
+    // Force sync: cancel any running sync
+    $force = !empty($input['force']);
     $stmtRunning = db()->prepare(
         "SELECT id FROM sync_log WHERE workspace_id = ? AND status = 'running' LIMIT 1"
     );
     $stmtRunning->execute([$workspaceId]);
     if ($stmtRunning->fetch()) {
-        http_response_code(429);
-        echo json_encode(['error' => 'A sync is already running. Please wait for it to finish.']);
-        exit;
+        if (!$force) {
+            http_response_code(429);
+            echo json_encode(['error' => 'A sync is already running. Please wait or force a new sync.']);
+            exit;
+        }
+        // Cancel all running syncs
+        $stmtCancel = db()->prepare(
+            "UPDATE sync_log SET status = 'cancelled', error_message = 'Cancelled by user' WHERE workspace_id = ? AND status = 'running'"
+        );
+        $stmtCancel->execute([$workspaceId]);
     }
     $listId = $input['list_id'] ?? '46726233';
     $userId = $user['id'] ?? '';
