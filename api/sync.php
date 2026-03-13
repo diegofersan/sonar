@@ -74,6 +74,13 @@ try {
 
     $workspaceId = $workspace['id'];
 
+    // Mark stale syncs (running > 5 min) as failed
+    $staleTimeout = time() - 300;
+    $stmtStale = db()->prepare(
+        "UPDATE sync_log SET status = 'error', error_message = 'Timeout' WHERE workspace_id = ? AND status = 'running' AND started_at < ?"
+    );
+    $stmtStale->execute([$workspaceId, $staleTimeout]);
+
     // Rate limit: reject if a sync is already running for this workspace
     $stmtRunning = db()->prepare(
         "SELECT id FROM sync_log WHERE workspace_id = ? AND status = 'running' LIMIT 1"
