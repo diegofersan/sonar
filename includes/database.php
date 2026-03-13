@@ -192,11 +192,27 @@ function db_upsert_task(array $task, string $workspace_id): void
     $synced_at     = time();
 
     // -- Detect changes on watched tasks ------------------------------------
+    // Check if this task OR its parent post is watched
 
-    $isWatched = db_is_task_watched($id, $workspace_id);
-    if ($isWatched) {
+    $watchedTaskId = null;
+    if (db_is_task_watched($id, $workspace_id)) {
+        $watchedTaskId = $id;
+    } elseif ($parent_id && db_is_task_watched($parent_id, $workspace_id)) {
+        $watchedTaskId = $parent_id;
+    }
+
+    if ($watchedTaskId) {
         $oldTask = db_get_task($id);
         if ($oldTask !== null) {
+            // Build notification name: "Post Name → Copy" for subtasks
+            $notifName = $name;
+            if ($watchedTaskId !== $id) {
+                $parentTask = db_get_task($parent_id);
+                if ($parentTask) {
+                    $notifName = $parentTask['name'] . ' → ' . $name;
+                }
+            }
+
             $fields = [
                 'status'   => ['old' => $oldTask['status_name'],    'new' => $status_name],
                 'priority' => ['old' => $oldTask['priority_label'],  'new' => $priority_label],
@@ -212,7 +228,7 @@ function db_upsert_task(array $task, string $workspace_id): void
                 $oldVal = (string)($f['old'] ?? '');
                 $newVal = (string)($f['new'] ?? '');
                 if ($oldVal !== $newVal) {
-                    $stmtNotif->execute([$id, $name, $workspace_id, $changeType, $f['old'], $f['new']]);
+                    $stmtNotif->execute([$watchedTaskId, $notifName, $workspace_id, $changeType, $f['old'], $f['new']]);
                 }
             }
         }
