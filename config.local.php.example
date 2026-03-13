@@ -1,0 +1,9 @@
+<?php
+// Copy this file to config.local.php and fill in your ClickUp OAuth credentials
+// Get them from: https://app.clickup.com/settings/integrations (create an OAuth app)
+
+return [
+    'client_id' => 'YOUR_CLIENT_ID_HERE',
+    'client_secret' => 'YOUR_CLIENT_SECRET_HERE',
+    'redirect_uri' => 'http://localhost:8080/oauth/callback.php',
+];

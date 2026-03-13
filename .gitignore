@@ -1,0 +1,18 @@
+# Local config with secrets
+config.local.php
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data / SQLite cache
+data/
+
+# PHP
+*.log

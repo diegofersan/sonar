@@ -1,0 +1,95 @@
+<?php
+/**
+ * Sync endpoint - launches background sync and returns immediately.
+ * The actual sync runs as a CLI process.
+ */
+ini_set('display_errors', '0');
+error_reporting(E_ALL & ~E_DEPRECATED);
+header('Content-Type: application/json; charset=utf-8');
+
+try {
+    require_once __DIR__ . '/../includes/session.php';
+    require_once __DIR__ . '/../includes/database.php';
+
+    init_session();
+
+    if (!is_authenticated()) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Not authenticated']);
+        exit;
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        // GET = check sync status
+        $workspace = get_workspace();
+        if (!$workspace) {
+            echo json_encode(['status' => 'no_workspace']);
+            exit;
+        }
+        $lastSync = db_get_last_sync($workspace['id']);
+        // Check if there's a running sync
+        $stmt = db()->prepare(
+            "SELECT * FROM sync_log WHERE workspace_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1"
+        );
+        $stmt->execute([$workspace['id']]);
+        $running = $stmt->fetch();
+
+        echo json_encode([
+            'running' => $running ? true : false,
+            'started_at' => $running ? $running['started_at'] : null,
+            'last_sync' => $lastSync ? $lastSync['completed_at'] : null,
+            'last_count' => $lastSync ? $lastSync['task_count'] : null,
+        ]);
+        exit;
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['error' => 'Method not allowed']);
+        exit;
+    }
+
+    $token = get_token();
+    $workspace = get_workspace();
+    $user = get_user();
+
+    if (!$workspace) {
+        http_response_code(400);
+        echo json_encode(['error' => 'No workspace selected']);
+        exit;
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true) ?: [];
+    $listId = $input['list_id'] ?? '46726233';
+    $workspaceId = $workspace['id'];
+    $userId = $user['id'] ?? '';
+
+    // Create sync log entry
+    $logId = db_log_sync_start($workspaceId, $userId, $listId);
+
+    // Launch background sync process
+    $phpBin = PHP_BINARY;
+    $script = __DIR__ . '/sync_worker.php';
+    $cmd = sprintf(
+        '%s %s %s %s %s %s %d > /dev/null 2>&1 &',
+        escapeshellarg($phpBin),
+        escapeshellarg($script),
+        escapeshellarg($token),
+        escapeshellarg($workspaceId),
+        escapeshellarg($listId),
+        escapeshellarg($userId),
+        $logId
+    );
+
+    exec($cmd);
+
+    echo json_encode([
+        'success' => true,
+        'message' => 'Sync started in background',
+        'log_id' => $logId,
+    ]);
+
+} catch (\Throwable $e) {
+    http_response_code(500);
+    echo json_encode(['error' => $e->getMessage()]);
+}
