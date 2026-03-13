@@ -1,9 +1,11 @@
 <?php
 /**
- * Sync endpoint - launches background sync and returns immediately.
- * The actual sync runs as a CLI process.
+ * Sync endpoint.
+ * POST = start sync (responds immediately, continues processing in background)
+ * GET  = check sync status for polling
  */
 ini_set('display_errors', '0');
+ini_set('max_execution_time', '120');
 error_reporting(E_ALL & ~E_DEPRECATED);
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
@@ -11,6 +13,7 @@ header('X-Content-Type-Options: nosniff');
 try {
     require_once __DIR__ . '/../includes/session.php';
     require_once __DIR__ . '/../includes/database.php';
+    require_once __DIR__ . '/../includes/clickup.php';
 
     init_session();
 
@@ -21,14 +24,12 @@ try {
     }
 
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-        // GET = check sync status
         $workspace = get_workspace();
         if (!$workspace) {
             echo json_encode(['status' => 'no_workspace']);
             exit;
         }
         $lastSync = db_get_last_sync($workspace['id']);
-        // Check if there's a running sync
         $stmt = db()->prepare(
             "SELECT * FROM sync_log WHERE workspace_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1"
         );
@@ -50,11 +51,10 @@ try {
         exit;
     }
 
-    // Read body once (php://input can only be read once)
     $rawBody = file_get_contents('php://input');
     $input = json_decode($rawBody, true) ?: [];
 
-    // CSRF validation for state-changing request
+    // CSRF validation
     $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? ($input['_csrf'] ?? null);
     if (empty($csrfToken) || !hash_equals($_SESSION['csrf_token'] ?? '', $csrfToken)) {
         http_response_code(403);
@@ -93,47 +93,160 @@ try {
             echo json_encode(['error' => 'A sync is already running. Please wait or force a new sync.']);
             exit;
         }
-        // Cancel all running syncs
         $stmtCancel = db()->prepare(
             "UPDATE sync_log SET status = 'cancelled', error_message = 'Cancelled by user' WHERE workspace_id = ? AND status = 'running'"
         );
         $stmtCancel->execute([$workspaceId]);
     }
+
     $listId = $input['list_id'] ?? '46726233';
     $userId = $user['id'] ?? '';
 
-    // Create sync log entry
     $logId = db_log_sync_start($workspaceId, $userId, $listId);
 
-    // Launch background sync process
-    // Write token to a temp file (avoids exposing it in process list or shell env issues)
-    $tokenFile = tempnam(sys_get_temp_dir(), 'sonar_token_');
-    file_put_contents($tokenFile, $token);
-    chmod($tokenFile, 0600);
+    // Release session lock so polling requests aren't blocked
+    session_write_close();
 
-    $phpBin = PHP_BINARY;
-    $script = __DIR__ . '/sync_worker.php';
-    $cmd = sprintf(
-        '%s %s %s %s %s %s %d > /dev/null 2>&1 &',
-        escapeshellarg($phpBin),
-        escapeshellarg($script),
-        escapeshellarg($tokenFile),
-        escapeshellarg($workspaceId),
-        escapeshellarg($listId),
-        escapeshellarg($userId),
-        $logId
-    );
-
-    exec($cmd);
+    // Send response immediately, then continue processing
+    ignore_user_abort(true);
 
     echo json_encode([
         'success' => true,
-        'message' => 'Sync started in background',
+        'message' => 'Sync started',
         'log_id' => $logId,
     ]);
 
+    // Flush output to client
+    if (function_exists('fastcgi_finish_request')) {
+        fastcgi_finish_request();
+    } else {
+        header('Connection: close');
+        header('Content-Length: ' . ob_get_length());
+        ob_end_flush();
+        flush();
+    }
+
+    // ---- Client has received the response. Now do the sync inline. ----
+
+    $totalTasks = 0;
+    $page = 0;
+    $hasMore = true;
+    $taskIds = [];
+
+    while ($hasMore) {
+        $endpoint = "/team/{$workspaceId}/task?"
+            . "assignees[]={$userId}"
+            . "&list_ids[]={$listId}"
+            . "&subtasks=true"
+            . "&include_closed=false"
+            . "&page={$page}";
+
+        $result = clickup_api_get($endpoint, $token);
+
+        if (!$result['ok']) {
+            db_log_sync_end($logId, 'error', $totalTasks, $result['error'] ?? 'API error');
+            exit;
+        }
+
+        $tasks = $result['body']['tasks'] ?? [];
+        $count = count($tasks);
+
+        if ($count > 0) {
+            db_upsert_tasks($tasks, $workspaceId);
+            foreach ($tasks as $t) {
+                $taskIds[] = $t['id'];
+            }
+            $totalTasks += $count;
+        }
+
+        unset($result, $tasks);
+        $hasMore = $count >= 100;
+        $page++;
+        if ($page >= 20) break;
+    }
+
+    // Fetch parent chain for breadcrumbs
+    $parentIds = [];
+    foreach ($taskIds as $tid) {
+        $task = db_get_task($tid);
+        if ($task && !empty($task['parent_id']) && !in_array($task['parent_id'], $taskIds)) {
+            $parentIds[] = $task['parent_id'];
+        }
+    }
+
+    $fetched = $taskIds;
+    $toFetch = array_unique($parentIds);
+    $maxDepth = 10;
+
+    while (!empty($toFetch) && $maxDepth > 0) {
+        $nextFetch = [];
+        foreach ($toFetch as $pid) {
+            if (in_array($pid, $fetched)) continue;
+
+            $res = clickup_api_get("/task/{$pid}", $token);
+            if ($res['ok'] && !empty($res['body'])) {
+                db_upsert_task($res['body'], $workspaceId);
+                $fetched[] = $pid;
+
+                $pp = $res['body']['parent'] ?? null;
+                if ($pp && !in_array($pp, $fetched)) {
+                    $nextFetch[] = $pp;
+                }
+            }
+            unset($res);
+        }
+        $toFetch = array_unique($nextFetch);
+        $maxDepth--;
+    }
+
+    // Fetch sibling subtasks (Copy/Design)
+    $allFetched = $fetched;
+    foreach ($taskIds as $tid) {
+        $task = db_get_task($tid);
+        if (!$task) continue;
+
+        $taskNameLower = strtolower($task['name']);
+        $isSubtask = (strpos($taskNameLower, 'design') !== false || strpos($taskNameLower, 'copy') !== false);
+        $postId = $isSubtask ? $task['parent_id'] : $task['id'];
+        if (!$postId) continue;
+
+        $res = clickup_api_get("/task/{$postId}?include_subtasks=true", $token);
+        if ($res['ok'] && !empty($res['body']['subtasks'])) {
+            foreach ($res['body']['subtasks'] as $sub) {
+                $subNameLower = strtolower($sub['name'] ?? '');
+                $isCopy = strpos($subNameLower, 'copy') !== false;
+
+                if ($isCopy || !in_array($sub['id'], $allFetched)) {
+                    if ($isCopy) {
+                        $fullSub = clickup_api_get("/task/{$sub['id']}", $token);
+                        if ($fullSub['ok'] && !empty($fullSub['body'])) {
+                            db_upsert_task($fullSub['body'], $workspaceId);
+                            $allFetched[] = $sub['id'];
+                            continue;
+                        }
+                    }
+                    db_upsert_task($sub, $workspaceId);
+                    $allFetched[] = $sub['id'];
+                }
+            }
+        }
+        unset($res);
+    }
+
+    // Save list config
+    $stmt = db()->prepare('SELECT list_name FROM tasks WHERE list_id = ? LIMIT 1');
+    $stmt->execute([$listId]);
+    $row = $stmt->fetch();
+    db_save_list_config($listId, $row ? $row['list_name'] : 'Content', $workspaceId);
+
+    db_log_sync_end($logId, 'success', $totalTasks);
+
 } catch (\Throwable $e) {
-    error_log('Sonar error: ' . $e->getMessage());
-    http_response_code(500);
-    echo json_encode(['error' => 'An internal error occurred']);
+    error_log('Sonar sync error: ' . $e->getMessage());
+    if (isset($logId)) {
+        db_log_sync_end($logId, 'error', 0, $e->getMessage());
+    } else {
+        http_response_code(500);
+        echo json_encode(['error' => 'An internal error occurred']);
+    }
 }
