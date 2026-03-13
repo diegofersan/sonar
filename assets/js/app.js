@@ -664,9 +664,9 @@
 
   var _notifPollTimer = null;
 
-  function relativeTime(dateStr) {
+  function relativeTime(ts) {
     var now = Date.now();
-    var then = new Date(dateStr).getTime();
+    var then = typeof ts === 'number' ? ts * 1000 : new Date(ts).getTime();
     var diffMs = now - then;
     if (diffMs < 0) return 'agora';
     var diffMin = Math.floor(diffMs / 60000);
@@ -679,7 +679,7 @@
   }
 
   function formatChangeDescription(n) {
-    var field = n.field || '';
+    var field = n.change_type || n.field || '';
     var labels = {
       status: 'Status',
       priority: 'Prioridade',
@@ -704,7 +704,7 @@
   }
 
   function renderNotification(n) {
-    var unreadClass = n.read ? '' : ' unread';
+    var unreadClass = (n.seen || n.read) ? '' : ' unread';
     var taskName = n.task_name || 'Tarefa';
     var taskUrl = n.task_url || '';
 
@@ -726,7 +726,7 @@
     apiFetch('/api/notifications.php?unread_count=1').then(function(data) {
       var badge = document.getElementById('notif-badge');
       if (!badge) return;
-      var count = data.unread_count || 0;
+      var count = data.count || data.unread_count || 0;
       if (count > 0) {
         badge.style.display = '';
         badge.textContent = count > 9 ? '9+' : String(count);
