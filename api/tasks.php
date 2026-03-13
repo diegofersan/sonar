@@ -172,6 +172,13 @@ try {
         $enrichedTasks[] = $task;
     }
 
+    // Add watched status to each task
+    $watchedIds = db_get_watched_task_ids($workspaceId);
+    foreach ($enrichedTasks as &$task) {
+        $task['watched'] = in_array($task['post_id'] ?? $task['id'], $watchedIds);
+    }
+    unset($task);
+
     // Sort by urgency score descending (most urgent first)
     usort($enrichedTasks, function ($a, $b) {
         return $b['urgency_score'] - $a['urgency_score'];

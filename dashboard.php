@@ -42,6 +42,24 @@ if (empty($_SESSION['clickup_workspace'])) {
             <span class="brand-name">Sonar</span>
         </div>
         <div class="header-right">
+            <div class="notif-wrapper">
+                <button id="btn-notifications" class="btn-icon-header" aria-label="Notificacoes" title="Notificacoes">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                    </svg>
+                    <span id="notif-badge" class="notif-badge" style="display:none;">0</span>
+                </button>
+                <div id="notif-panel" class="notif-panel" style="display:none;">
+                    <div class="notif-panel-header">
+                        <span class="notif-panel-title">Notificacoes</span>
+                        <button id="btn-mark-all-read" class="notif-mark-all">Marcar todas como lidas</button>
+                    </div>
+                    <div id="notif-list" class="notif-list">
+                        <div class="notif-empty">Sem notificacoes</div>
+                    </div>
+                </div>
+            </div>
             <div class="user-info">
                 <?php if ($userAvatar): ?>
                     <img class="user-avatar" src="<?= htmlspecialchars($userAvatar, ENT_QUOTES, 'UTF-8') ?>"

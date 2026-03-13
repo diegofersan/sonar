@@ -113,6 +113,28 @@ function db_migrate(): void
             workspace_id  TEXT NOT NULL,
             enabled       INTEGER DEFAULT 1
         );
+
+        CREATE TABLE IF NOT EXISTS watched_tasks (
+            task_id       TEXT NOT NULL,
+            workspace_id  TEXT NOT NULL,
+            created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+            PRIMARY KEY (task_id, workspace_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS task_notifications (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id       TEXT NOT NULL,
+            task_name     TEXT,
+            workspace_id  TEXT NOT NULL,
+            change_type   TEXT NOT NULL,
+            old_value     TEXT,
+            new_value     TEXT,
+            seen          INTEGER NOT NULL DEFAULT 0,
+            created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_notifications_unseen
+            ON task_notifications(workspace_id, seen, created_at DESC);
     SQL);
 }
 
@@ -168,6 +190,33 @@ function db_upsert_task(array $task, string $workspace_id): void
     $date_created  = $task['date_created'] ?? null;
     $date_updated  = $task['date_updated'] ?? null;
     $synced_at     = time();
+
+    // -- Detect changes on watched tasks ------------------------------------
+
+    $isWatched = db_is_task_watched($id, $workspace_id);
+    if ($isWatched) {
+        $oldTask = db_get_task($id);
+        if ($oldTask !== null) {
+            $fields = [
+                'status'   => ['old' => $oldTask['status_name'],    'new' => $status_name],
+                'priority' => ['old' => $oldTask['priority_label'],  'new' => $priority_label],
+                'due_date' => ['old' => $oldTask['due_date'],        'new' => $due_date],
+                'assignee' => ['old' => $oldTask['assignees'],       'new' => $assignees],
+                'name'     => ['old' => $oldTask['name'],            'new' => $name],
+            ];
+            $stmtNotif = $pdo->prepare(
+                'INSERT INTO task_notifications (task_id, task_name, workspace_id, change_type, old_value, new_value)
+                 VALUES (?, ?, ?, ?, ?, ?)'
+            );
+            foreach ($fields as $changeType => $f) {
+                $oldVal = (string)($f['old'] ?? '');
+                $newVal = (string)($f['new'] ?? '');
+                if ($oldVal !== $newVal) {
+                    $stmtNotif->execute([$id, $name, $workspace_id, $changeType, $f['old'], $f['new']]);
+                }
+            }
+        }
+    }
 
     // -- Upsert the task row -----------------------------------------------
 
@@ -546,4 +595,170 @@ function db_get_enabled_lists(string $workspace_id): array
     $stmt->execute([$workspace_id]);
 
     return $stmt->fetchAll();
+}
+
+// ---------------------------------------------------------------------------
+// Watched tasks
+// ---------------------------------------------------------------------------
+
+/**
+ * Start watching a task in a workspace.
+ *
+ * @param string $task_id      ClickUp task ID.
+ * @param string $workspace_id Workspace / team ID.
+ */
+function db_watch_task(string $task_id, string $workspace_id): void
+{
+    $stmt = db()->prepare(
+        'INSERT OR IGNORE INTO watched_tasks (task_id, workspace_id) VALUES (?, ?)'
+    );
+    $stmt->execute([$task_id, $workspace_id]);
+}
+
+/**
+ * Stop watching a task in a workspace.
+ *
+ * @param string $task_id      ClickUp task ID.
+ * @param string $workspace_id Workspace / team ID.
+ */
+function db_unwatch_task(string $task_id, string $workspace_id): void
+{
+    $stmt = db()->prepare(
+        'DELETE FROM watched_tasks WHERE task_id = ? AND workspace_id = ?'
+    );
+    $stmt->execute([$task_id, $workspace_id]);
+}
+
+/**
+ * Check whether a task is being watched in a workspace.
+ *
+ * @param string $task_id      ClickUp task ID.
+ * @param string $workspace_id Workspace / team ID.
+ * @return bool
+ */
+function db_is_task_watched(string $task_id, string $workspace_id): bool
+{
+    $stmt = db()->prepare(
+        'SELECT 1 FROM watched_tasks WHERE task_id = ? AND workspace_id = ?'
+    );
+    $stmt->execute([$task_id, $workspace_id]);
+
+    return $stmt->fetch() !== false;
+}
+
+/**
+ * Return all watched task IDs for a workspace.
+ *
+ * @param string $workspace_id Workspace / team ID.
+ * @return array               Array of task ID strings.
+ */
+function db_get_watched_task_ids(string $workspace_id): array
+{
+    $stmt = db()->prepare(
+        'SELECT task_id FROM watched_tasks WHERE workspace_id = ?'
+    );
+    $stmt->execute([$workspace_id]);
+
+    return array_column($stmt->fetchAll(), 'task_id');
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+/**
+ * Return recent notifications for a workspace.
+ *
+ * @param string $workspace_id Workspace / team ID.
+ * @param int    $limit        Maximum number of rows to return.
+ * @return array               Array of notification rows.
+ */
+function db_get_notifications(string $workspace_id, int $limit = 50): array
+{
+    $stmt = db()->prepare(
+        'SELECT * FROM task_notifications WHERE workspace_id = ? ORDER BY created_at DESC LIMIT ?'
+    );
+    $stmt->execute([$workspace_id, $limit]);
+
+    return $stmt->fetchAll();
+}
+
+/**
+ * Return the count of unread notifications for a workspace.
+ *
+ * @param string $workspace_id Workspace / team ID.
+ * @return int
+ */
+function db_get_unread_count(string $workspace_id): int
+{
+    $stmt = db()->prepare(
+        'SELECT COUNT(*) FROM task_notifications WHERE workspace_id = ? AND seen = 0'
+    );
+    $stmt->execute([$workspace_id]);
+
+    return (int) $stmt->fetchColumn();
+}
+
+/**
+ * Mark a single notification as read.
+ *
+ * @param int $id Notification row ID.
+ */
+function db_mark_notification_read(int $id): void
+{
+    $stmt = db()->prepare(
+        'UPDATE task_notifications SET seen = 1 WHERE id = ?'
+    );
+    $stmt->execute([$id]);
+}
+
+/**
+ * Mark all notifications as read for a workspace.
+ *
+ * @param string $workspace_id Workspace / team ID.
+ */
+function db_mark_all_notifications_read(string $workspace_id): void
+{
+    $stmt = db()->prepare(
+        'UPDATE task_notifications SET seen = 1 WHERE workspace_id = ?'
+    );
+    $stmt->execute([$workspace_id]);
+}
+
+/**
+ * Clean up old notifications for a workspace.
+ *
+ * - Delete seen notifications older than 30 days.
+ * - Delete all notifications older than 90 days.
+ * - Keep at most 500 notifications (delete oldest beyond that).
+ *
+ * @param string $workspace_id Workspace / team ID.
+ */
+function db_cleanup_notifications(string $workspace_id): void
+{
+    $pdo = db();
+    $now = time();
+
+    // Delete seen notifications older than 30 days
+    $pdo->prepare(
+        'DELETE FROM task_notifications WHERE workspace_id = ? AND seen = 1 AND created_at < ?'
+    )->execute([$workspace_id, $now - (30 * 86400)]);
+
+    // Delete all notifications older than 90 days
+    $pdo->prepare(
+        'DELETE FROM task_notifications WHERE workspace_id = ? AND created_at < ?'
+    )->execute([$workspace_id, $now - (90 * 86400)]);
+
+    // Keep at most 500 notifications
+    $stmt = $pdo->prepare(
+        'SELECT id FROM task_notifications WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 1 OFFSET 500'
+    );
+    $stmt->execute([$workspace_id]);
+    $cutoff = $stmt->fetch();
+
+    if ($cutoff) {
+        $pdo->prepare(
+            'DELETE FROM task_notifications WHERE workspace_id = ? AND id <= ?'
+        )->execute([$workspace_id, $cutoff['id']]);
+    }
 }

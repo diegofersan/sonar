@@ -243,6 +243,7 @@ try {
     $row = $stmt->fetch();
     db_save_list_config($listId, $row ? $row['list_name'] : 'Content', $workspaceId);
 
+    db_cleanup_notifications($workspaceId);
     db_log_sync_end($logId, 'success', $totalTasks);
 
 } catch (\Throwable $e) {

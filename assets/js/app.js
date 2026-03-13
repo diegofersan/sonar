@@ -480,6 +480,16 @@
       urgencyBadge = '<span class="urgency-badge ' + urgencyClass + '">' + escapeHtml(String(task.urgency_score || 0)) + '</span>';
     }
 
+    var taskId = task.post_id || task.id || '';
+    var isWatched = task.watched ? 'true' : 'false';
+    var watchTitle = task.watched ? 'Deixar de seguir' : 'Seguir tarefa';
+    var watchBtn = '<button class="task-watch" data-task-id="' + escapeHtml(String(taskId)) + '" data-watched="' + isWatched + '" title="' + watchTitle + '">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>' +
+        '<circle cx="12" cy="12" r="3"/>' +
+      '</svg>' +
+    '</button>';
+
     var classes = 'task-card';
     if (isCancelled) classes += ' cancelled';
     if (task.priority_id) classes += ' priority-' + (parseInt(task.priority_id) || 0);
@@ -490,6 +500,7 @@
         '<div class="task-name">' + escapeHtml(task.post_name || task.name) + '</div>' +
       '</div>' +
       '<div class="task-meta">' + priorityBadge + dueDate + '</div>' +
+      watchBtn +
       '<a href="' + escapeHtml(task.post_url || task.url || '#') + '" target="_blank" class="task-link" title="Abrir no ClickUp">' +
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
           '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>' +
@@ -607,6 +618,7 @@
         if (!status.running) {
           Toast.success('Sync completo: ' + (status.last_count || 0) + ' tarefas');
           fetchTasks();
+          fetchUnreadCount();
           btn.disabled = false;
           btn.classList.remove('syncing');
           btn.innerHTML = originalText;
@@ -621,6 +633,206 @@
     btn.disabled = false;
     btn.classList.remove('syncing');
     btn.innerHTML = originalText;
+  }
+
+  /* ---------- Watch Task ---------- */
+
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.task-watch');
+    if (!btn) return;
+    e.preventDefault();
+    var taskId = btn.getAttribute('data-task-id');
+    var isWatched = btn.getAttribute('data-watched') === 'true';
+    var newState = !isWatched;
+
+    // Optimistic UI update
+    btn.setAttribute('data-watched', String(newState));
+    btn.title = newState ? 'Deixar de seguir' : 'Seguir tarefa';
+
+    apiFetch('/api/watch.php', {
+      method: 'POST',
+      body: JSON.stringify({ task_id: taskId, action: newState ? 'watch' : 'unwatch' })
+    }).catch(function(err) {
+      // Revert on error
+      btn.setAttribute('data-watched', String(isWatched));
+      btn.title = isWatched ? 'Deixar de seguir' : 'Seguir tarefa';
+      Toast.error('Erro ao atualizar: ' + err.message);
+    });
+  });
+
+  /* ---------- Notifications ---------- */
+
+  var _notifPollTimer = null;
+
+  function relativeTime(dateStr) {
+    var now = Date.now();
+    var then = new Date(dateStr).getTime();
+    var diffMs = now - then;
+    if (diffMs < 0) return 'agora';
+    var diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'agora';
+    if (diffMin < 60) return 'ha ' + diffMin + ' min';
+    var diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return 'ha ' + diffH + ' h';
+    var diffD = Math.floor(diffH / 24);
+    return 'ha ' + diffD + ' dia' + (diffD > 1 ? 's' : '');
+  }
+
+  function formatChangeDescription(n) {
+    var field = n.field || '';
+    var labels = {
+      status: 'Status',
+      priority: 'Prioridade',
+      due_date: 'Prazo alterado',
+      assignee: 'Assignees alterados',
+      name: 'Nome'
+    };
+
+    if (field === 'due_date' || field === 'assignee') {
+      return '<span class="notif-change">' + escapeHtml(labels[field] || field) + '</span>';
+    }
+
+    var label = labels[field] || field;
+    var oldVal = n.old_value || '';
+    var newVal = n.new_value || '';
+
+    return '<span class="notif-change">' + escapeHtml(label) + ': ' +
+      '<span class="notif-old">' + escapeHtml(oldVal) + '</span>' +
+      ' → ' +
+      '<span class="notif-new">' + escapeHtml(newVal) + '</span>' +
+    '</span>';
+  }
+
+  function renderNotification(n) {
+    var unreadClass = n.read ? '' : ' unread';
+    var taskName = n.task_name || 'Tarefa';
+    var taskUrl = n.task_url || '';
+
+    var nameHtml = taskUrl
+      ? '<a href="' + escapeHtml(taskUrl) + '" target="_blank" class="notif-task-name">' + escapeHtml(taskName) + '</a>'
+      : '<span class="notif-task-name">' + escapeHtml(taskName) + '</span>';
+
+    return '<div class="notif-item' + unreadClass + '" data-notif-id="' + (n.id || '') + '">' +
+      '<div class="notif-content">' +
+        nameHtml +
+        formatChangeDescription(n) +
+        '<span class="notif-time">' + relativeTime(n.created_at) + '</span>' +
+      '</div>' +
+      '<button class="notif-dismiss" title="Marcar como lida">&times;</button>' +
+    '</div>';
+  }
+
+  function fetchUnreadCount() {
+    apiFetch('/api/notifications.php?unread_count=1').then(function(data) {
+      var badge = document.getElementById('notif-badge');
+      if (!badge) return;
+      var count = data.unread_count || 0;
+      if (count > 0) {
+        badge.style.display = '';
+        badge.textContent = count > 9 ? '9+' : String(count);
+      } else {
+        badge.style.display = 'none';
+        badge.textContent = '0';
+      }
+    }).catch(function() {
+      // Silently ignore fetch errors for badge
+    });
+  }
+
+  function fetchNotifications() {
+    var list = document.getElementById('notif-list');
+    if (!list) return;
+
+    list.innerHTML = '<div class="loading-container"><span class="loading-spinner"></span></div>';
+
+    apiFetch('/api/notifications.php').then(function(data) {
+      var notifications = data.notifications || [];
+      if (notifications.length === 0) {
+        list.innerHTML = '<div class="notif-empty">Sem notificacoes</div>';
+        return;
+      }
+      list.innerHTML = notifications.map(renderNotification).join('');
+    }).catch(function(err) {
+      list.innerHTML = '<div class="notif-empty">Erro ao carregar notificacoes</div>';
+    });
+  }
+
+  function bindNotifications() {
+    var bellBtn = document.getElementById('btn-notifications');
+    var panel = document.getElementById('notif-panel');
+    var markAllBtn = document.getElementById('btn-mark-all-read');
+    if (!bellBtn || !panel) return;
+
+    // Toggle panel on bell click
+    bellBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var isVisible = panel.style.display !== 'none';
+      if (isVisible) {
+        panel.style.display = 'none';
+      } else {
+        panel.style.display = '';
+        fetchNotifications();
+      }
+    });
+
+    // Close panel on click outside
+    document.addEventListener('click', function(e) {
+      if (!panel.contains(e.target) && e.target !== bellBtn && !bellBtn.contains(e.target)) {
+        panel.style.display = 'none';
+      }
+    });
+
+    // Close panel on Escape
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        panel.style.display = 'none';
+      }
+    });
+
+    // Dismiss single notification
+    panel.addEventListener('click', function(e) {
+      var dismissBtn = e.target.closest('.notif-dismiss');
+      if (!dismissBtn) return;
+      var item = dismissBtn.closest('.notif-item');
+      if (!item) return;
+      var notifId = item.getAttribute('data-notif-id');
+
+      item.classList.remove('unread');
+      apiFetch('/api/notifications.php', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'mark_read', id: parseInt(notifId) })
+      }).then(function() {
+        fetchUnreadCount();
+      }).catch(function() {
+        // Silently ignore
+      });
+    });
+
+    // Mark all as read
+    if (markAllBtn) {
+      markAllBtn.addEventListener('click', function() {
+        apiFetch('/api/notifications.php', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'mark_all_read' })
+        }).then(function() {
+          var items = panel.querySelectorAll('.notif-item.unread');
+          for (var i = 0; i < items.length; i++) {
+            items[i].classList.remove('unread');
+          }
+          var badge = document.getElementById('notif-badge');
+          if (badge) {
+            badge.style.display = 'none';
+            badge.textContent = '0';
+          }
+        }).catch(function(err) {
+          Toast.error('Erro ao marcar notificacoes: ' + err.message);
+        });
+      });
+    }
+
+    // Fetch unread count on load and every 60s
+    fetchUnreadCount();
+    _notifPollTimer = setInterval(fetchUnreadCount, 60000);
   }
 
   /* ---------- Helpers ---------- */
@@ -650,6 +862,7 @@
     bindSync();
     bindChangeWorkspace();
     bindLogout();
+    bindNotifications();
   }
 
   if (document.readyState === 'loading') {
