@@ -430,22 +430,7 @@
       });
     }
 
-    // Also collect overdue and no-date tasks for the current week (offset 0)
-    var overdueHtml = '';
-    if (_calWeekOffset === 0) {
-      var overdue = allTasks.filter(function(t) {
-        if (!t.due_date) return false;
-        return parseInt(t.due_date) < weekStart.getTime();
-      });
-      if (overdue.length > 0) {
-        overdueHtml = '<div class="cal-overdue">' +
-          '<div class="cal-day-header cal-overdue-header">Atrasadas (' + overdue.length + ')</div>' +
-          overdue.map(function(t) { return buildTaskCardHtml(t, false); }).join('') +
-          '</div>';
-      }
-    }
-
-    grid.innerHTML = overdueHtml + '<div class="cal-week">' + days.map(function(d) {
+    grid.innerHTML = '<div class="cal-week">' + days.map(function(d) {
       var classes = 'cal-day';
       if (d.isToday) classes += ' cal-today';
       if (d.isWeekend) classes += ' cal-weekend';
@@ -457,14 +442,15 @@
         '</div>' +
         '<div class="cal-day-tasks">' +
           (d.tasks.length > 0
-            ? d.tasks.map(function(t) { return buildTaskCardHtml(t, false); }).join('')
+            ? d.tasks.map(function(t) { return buildTaskCardHtml(t, false, { hideDueDate: true }); }).join('')
             : '<div class="cal-empty"></div>') +
         '</div>' +
       '</div>';
     }).join('') + '</div>';
   }
 
-  function buildTaskCardHtml(task, isCancelled) {
+  function buildTaskCardHtml(task, isCancelled, opts) {
+    opts = opts || {};
     var leTag = '';
     if (task.linha_editorial) {
       leTag = '<span class="le-tag">' + escapeHtml(task.linha_editorial) + '</span>';
@@ -486,7 +472,7 @@
       priorityBadge = '<span class="priority-badge priority-' + safePriority + '">' +
         escapeHtml(labels[safePriority] || '') + '</span>';
     }
-    var dueDate = formatDueDate(task.due_date);
+    var dueDate = opts.hideDueDate ? '' : formatDueDate(task.due_date);
     var urgencyBadge = '';
     if (task.urgency_score != null) {
       var urgencyClass = 'urgency-low';

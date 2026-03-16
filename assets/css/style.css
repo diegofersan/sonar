@@ -1017,6 +1017,17 @@ a {
   margin-bottom: 0.25rem;
 }
 
+.cal-day-tasks .card-top-row {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.cal-day-tasks .le-tag {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 @media (max-width: 900px) {
   .cal-week {
     grid-template-columns: 1fr;
