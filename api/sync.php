@@ -180,16 +180,14 @@ try {
             continue;
         }
 
-        // List endpoint may ignore assignee filter for guests — filter in PHP
-        if ($useListEndpoint) {
-            $tasks = array_filter($tasks, function ($t) use ($userId) {
-                foreach ($t['assignees'] ?? [] as $a) {
-                    if ((string) ($a['id'] ?? '') === (string) $userId) return true;
-                }
-                return false;
-            });
-            $tasks = array_values($tasks);
-        }
+        // ClickUp may ignore assignee filter for guest users — filter in PHP
+        $tasks = array_filter($tasks, function ($t) use ($userId) {
+            foreach ($t['assignees'] ?? [] as $a) {
+                if ((string) ($a['id'] ?? '') === (string) $userId) return true;
+            }
+            return false;
+        });
+        $tasks = array_values($tasks);
 
         $count = count($tasks);
 
