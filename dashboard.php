@@ -102,6 +102,7 @@ if (empty($_SESSION['clickup_workspace'])) {
             <!-- Tabs -->
             <div class="tabs">
                 <button class="tab active" data-tab="ready">Fila <span id="ready-count" class="tab-count"></span></button>
+                <button class="tab" data-tab="approval">Em Aprovação <span id="approval-count" class="tab-count"></span></button>
                 <button class="tab" data-tab="future">Futuro <span id="future-count" class="tab-count"></span></button>
                 <button class="tab" data-tab="cancelled">Canceladas <span id="cancelled-count" class="tab-count"></span></button>
                 <button class="tab" data-tab="calendar">Calendario</button>
@@ -114,6 +115,7 @@ if (empty($_SESSION['clickup_workspace'])) {
                     <span>A carregar tarefas...</span>
                 </div>
             </div>
+            <div id="approval-list" data-tab-content="approval" style="display:none;"></div>
             <div id="future-list" data-tab-content="future" style="display:none;"></div>
             <div id="cancelled-list" data-tab-content="cancelled" style="display:none;"></div>
 

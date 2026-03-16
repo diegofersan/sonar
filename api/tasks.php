@@ -29,11 +29,17 @@ function calculate_urgency($task) {
     // Parent/post due date: 0-20 points
     $parentScore = score_due_date($task['post_due_date'] ?? null, 20);
 
+    // Approval rejected: +25 bonus points
+    $rejectedScore = !empty($task['approval_rejected']) ? 25 : 0;
+
+    $total = $designScore + $priorityScore + $parentScore + $rejectedScore;
+
     return [
-        'total' => (int) round($designScore + $priorityScore + $parentScore),
+        'total' => (int) round(min($total, 100)),
         'design' => (int) round($designScore),
         'priority' => (int) round($priorityScore),
         'post' => (int) round($parentScore),
+        'rejected' => $rejectedScore,
     ];
 }
 
@@ -98,7 +104,7 @@ try {
 
         // Skip published/pending tasks
         $taskStatus = strtolower(trim($task['status_name'] ?? ''));
-        if ($taskStatus === 'published' || $taskStatus === 'pending') continue;
+        if ($taskStatus === 'published' || $taskStatus === 'pending' || $taskStatus === 'scheduled') continue;
 
         // Determine if this task IS a post or a subtask of a post (Copy/Design)
         $parent = $task['parent_id'] ? db_get_task($task['parent_id']) : null;
@@ -117,6 +123,10 @@ try {
             $task['post_url'] = $parent['url'];
             // Use post status for classification (not the subtask's own status)
             $task['status_name'] = $parent['status_name'];
+            // Inherit approval_rejected from post parent
+            if (!empty($parent['approval_rejected'])) {
+                $task['approval_rejected'] = 1;
+            }
         } else {
             $task['post_name'] = $task['name'];
             $task['post_id'] = $task['id'];
@@ -177,6 +187,8 @@ try {
         $task['urgency_design'] = $urgency['design'];
         $task['urgency_priority'] = $urgency['priority'];
         $task['urgency_post'] = $urgency['post'];
+        $task['urgency_rejected'] = $urgency['rejected'];
+        $task['approval_rejected'] = !empty($task['approval_rejected']);
 
         $enrichedTasks[] = $task;
     }

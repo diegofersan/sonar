@@ -144,6 +144,13 @@ function db_migrate(): void
     } catch (\Throwable $e) {
         // Column already exists — ignore
     }
+
+    // Add approval_rejected flag to tasks
+    try {
+        $pdo->exec('ALTER TABLE tasks ADD COLUMN approval_rejected INTEGER NOT NULL DEFAULT 0');
+    } catch (\Throwable $e) {
+        // Column already exists — ignore
+    }
 }
 
 /**
@@ -251,6 +258,21 @@ function db_upsert_task(array $task, string $workspace_id): void
         }
     }
 
+    // -- Detect approval rejection (approval design → design) ---------------
+
+    $approvalRejected = 0;
+    $oldTask = $oldTask ?? db_get_task($id);
+    if ($oldTask) {
+        $oldStatus = strtolower(trim($oldTask['status_name'] ?? ''));
+        $newStatus = strtolower(trim($status_name ?? ''));
+        if ($oldStatus === 'approval design' && $newStatus === 'design') {
+            $approvalRejected = 1;
+        } elseif ($oldTask['approval_rejected'] ?? 0) {
+            // Keep the flag if task is still in design
+            $approvalRejected = $newStatus === 'design' ? 1 : 0;
+        }
+    }
+
     // -- Upsert the task row -----------------------------------------------
 
     $stmt = $pdo->prepare(<<<'SQL'
@@ -265,7 +287,7 @@ function db_upsert_task(array $task, string $workspace_id): void
             workspace_id, task_type,
             assignees, tags, url,
             date_created, date_updated,
-            synced_at
+            synced_at, approval_rejected
         ) VALUES (
             :id, :custom_id, :name, :description,
             :status_name, :status_color,
@@ -277,7 +299,7 @@ function db_upsert_task(array $task, string $workspace_id): void
             :workspace_id, :task_type,
             :assignees, :tags, :url,
             :date_created, :date_updated,
-            :synced_at
+            :synced_at, :approval_rejected
         )
     SQL);
 
@@ -305,6 +327,7 @@ function db_upsert_task(array $task, string $workspace_id): void
         ':date_created'   => $date_created,
         ':date_updated'   => $date_updated,
         ':synced_at'      => $synced_at,
+        ':approval_rejected' => $approvalRejected,
     ]);
 
     // -- Maintain task_assignees lookup ------------------------------------

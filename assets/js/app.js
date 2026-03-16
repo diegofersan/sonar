@@ -195,19 +195,22 @@
   /* ---------- Task Fetching & Rendering ---------- */
 
   var CANCELLED_STATUSES = ['post cancelado', 'cancelado', 'cancelled'];
-  var HIDDEN_STATUSES = ['linha editorial cancelada', 'published', 'pending'];
-  var READY_STATUSES = ['design', 'approval design'];
+  var HIDDEN_STATUSES = ['linha editorial cancelada', 'published', 'pending', 'scheduled'];
+  var APPROVAL_STATUSES = ['approval design'];
+  var READY_STATUSES = ['design'];
 
   function classifyTask(task) {
     var status = (task.status_name || '').toLowerCase().trim();
     if (HIDDEN_STATUSES.indexOf(status) !== -1) return 'hidden';
     if (CANCELLED_STATUSES.indexOf(status) !== -1) return 'cancelled';
+    if (APPROVAL_STATUSES.indexOf(status) !== -1) return 'approval';
     if (READY_STATUSES.indexOf(status) !== -1 && task.copy_ready) return 'ready';
     return 'future';
   }
 
   async function fetchTasks() {
     var readyContainer = document.getElementById('ready-list');
+    var approvalContainer = document.getElementById('approval-list');
     var futureContainer = document.getElementById('future-list');
     var cancelledContainer = document.getElementById('cancelled-list');
     if (!readyContainer) return 0;
@@ -223,14 +226,17 @@
       var all = (data.tasks || []).filter(function(t) { return classifyTask(t) !== 'hidden'; });
 
       _allTasks.ready = all.filter(function(t) { return classifyTask(t) === 'ready'; });
+      _allTasks.approval = all.filter(function(t) { return classifyTask(t) === 'approval'; });
       _allTasks.future = all.filter(function(t) { return classifyTask(t) === 'future'; });
       _allTasks.cancelled = all.filter(function(t) { return classifyTask(t) === 'cancelled'; });
 
       renderTasks(readyContainer, _allTasks.ready, false);
+      if (approvalContainer) renderTasks(approvalContainer, _allTasks.approval, false);
       if (futureContainer) renderTasks(futureContainer, _allTasks.future, false);
       if (cancelledContainer) renderTasks(cancelledContainer, _allTasks.cancelled, true);
 
       updateTabCount('ready-count', _allTasks.ready.length);
+      updateTabCount('approval-count', _allTasks.approval.length);
       updateTabCount('future-count', _allTasks.future.length);
       updateTabCount('cancelled-count', _allTasks.cancelled.length);
       updateTaskCount(_allTasks.ready.length);
@@ -328,7 +334,7 @@
 
   /* ---------- Search ---------- */
 
-  var _allTasks = { ready: [], future: [], cancelled: [] };
+  var _allTasks = { ready: [], approval: [], future: [], cancelled: [] };
 
   function filterByQuery(tasks, q) {
     if (!q) return tasks;
@@ -343,14 +349,17 @@
       var q = input.value.toLowerCase().trim();
 
       var ready = filterByQuery(_allTasks.ready, q);
+      var approval = filterByQuery(_allTasks.approval, q);
       var future = filterByQuery(_allTasks.future, q);
       var cancelled = filterByQuery(_allTasks.cancelled, q);
 
       renderTasks(document.getElementById('ready-list'), ready, false);
+      renderTasks(document.getElementById('approval-list'), approval, false);
       renderTasks(document.getElementById('future-list'), future, false);
       renderTasks(document.getElementById('cancelled-list'), cancelled, true);
 
       updateTabCount('ready-count', ready.length);
+      updateTabCount('approval-count', approval.length);
       updateTabCount('future-count', future.length);
       updateTabCount('cancelled-count', cancelled.length);
       updateTaskCount(ready.length);
@@ -392,8 +401,8 @@
     label.textContent = weekStart.getDate() + ' ' + MONTH_NAMES[weekStart.getMonth()] +
       ' — ' + weekEnd.getDate() + ' ' + MONTH_NAMES[weekEnd.getMonth()] + ' ' + weekEnd.getFullYear();
 
-    // Combine ready + future tasks (not cancelled)
-    var allTasks = _allTasks.ready.concat(_allTasks.future);
+    // Combine ready + approval + future tasks (not cancelled)
+    var allTasks = _allTasks.ready.concat(_allTasks.approval, _allTasks.future);
 
     // Group tasks by day
     var days = [];
@@ -466,6 +475,10 @@
     } else if (task.copy_ready === false) {
       copyIndicator = '<span class="copy-pending">Sem copy</span>';
     }
+    var rejectedBadge = '';
+    if (task.approval_rejected) {
+      rejectedBadge = '<span class="rejected-badge">Recusada</span>';
+    }
     var priorityBadge = '';
     if (task.priority_id) {
       var safePriority = parseInt(task.priority_id) || 0;
@@ -483,19 +496,24 @@
       var dScore = task.urgency_design || 0;
       var pScore = task.urgency_priority || 0;
       var postScore = task.urgency_post || 0;
+      var rejScore = task.urgency_rejected || 0;
+      var barColor = urgencyClass === 'urgency-critical' ? '#f44336' : urgencyClass === 'urgency-high' ? '#ff9800' : urgencyClass === 'urgency-medium' ? '#ffc107' : '#a0a0b0';
       urgencyBadge = '<span class="urgency-badge ' + urgencyClass + '">'
         + escapeHtml(String(task.urgency_score || 0))
         + '<span class="urgency-tooltip">'
         + '<div class="tooltip-title">Pontua\u00e7\u00e3o de urg\u00eancia</div>'
         + '<div class="tooltip-row"><span class="tooltip-row-label">Data design</span>'
-        + '<span class="tooltip-row-bar"><span class="tooltip-row-bar-fill" style="width:' + (dScore * 2) + '%;background:' + (urgencyClass === 'urgency-critical' ? '#f44336' : urgencyClass === 'urgency-high' ? '#ff9800' : urgencyClass === 'urgency-medium' ? '#ffc107' : '#a0a0b0') + '"></span></span>'
+        + '<span class="tooltip-row-bar"><span class="tooltip-row-bar-fill" style="width:' + (dScore * 2) + '%;background:' + barColor + '"></span></span>'
         + '<span class="tooltip-row-value">' + dScore + '/50</span></div>'
         + '<div class="tooltip-row"><span class="tooltip-row-label">Prioridade</span>'
-        + '<span class="tooltip-row-bar"><span class="tooltip-row-bar-fill" style="width:' + Math.round(pScore / 30 * 100) + '%;background:' + (urgencyClass === 'urgency-critical' ? '#f44336' : urgencyClass === 'urgency-high' ? '#ff9800' : urgencyClass === 'urgency-medium' ? '#ffc107' : '#a0a0b0') + '"></span></span>'
+        + '<span class="tooltip-row-bar"><span class="tooltip-row-bar-fill" style="width:' + Math.round(pScore / 30 * 100) + '%;background:' + barColor + '"></span></span>'
         + '<span class="tooltip-row-value">' + pScore + '/30</span></div>'
         + '<div class="tooltip-row"><span class="tooltip-row-label">Data post</span>'
-        + '<span class="tooltip-row-bar"><span class="tooltip-row-bar-fill" style="width:' + (postScore * 5) + '%;background:' + (urgencyClass === 'urgency-critical' ? '#f44336' : urgencyClass === 'urgency-high' ? '#ff9800' : urgencyClass === 'urgency-medium' ? '#ffc107' : '#a0a0b0') + '"></span></span>'
+        + '<span class="tooltip-row-bar"><span class="tooltip-row-bar-fill" style="width:' + (postScore * 5) + '%;background:' + barColor + '"></span></span>'
         + '<span class="tooltip-row-value">' + postScore + '/20</span></div>'
+        + (rejScore ? '<div class="tooltip-row"><span class="tooltip-row-label">Recusada</span>'
+        + '<span class="tooltip-row-bar"><span class="tooltip-row-bar-fill" style="width:100%;background:#f44336"></span></span>'
+        + '<span class="tooltip-row-value">+' + rejScore + '</span></div>' : '')
         + '<hr class="tooltip-divider">'
         + '<div class="tooltip-total"><span>Total</span><span>' + (task.urgency_score || 0) + '/100</span></div>'
         + '</span></span>';
@@ -527,7 +545,7 @@
       '</a>';
 
     return '<div class="' + classes + '">' +
-      '<div class="card-top-row">' + leTag + copyIndicator + urgencyBadge + '</div>' +
+      '<div class="card-top-row">' + leTag + rejectedBadge + copyIndicator + urgencyBadge + '</div>' +
       '<div class="task-header">' +
         '<div class="task-name">' + escapeHtml(task.post_name || task.name) + '</div>' +
       '</div>' +
