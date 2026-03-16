@@ -137,23 +137,49 @@ try {
     $hasMore = true;
     $taskIds = [];
 
+    // Try team-level endpoint first (works for regular members)
+    // Fall back to list-level endpoint (required for guest users)
+    $useListEndpoint = false;
+
     while ($hasMore) {
-        $endpoint = "/team/{$workspaceId}/task?"
-            . "assignees[]={$userId}"
-            . "&list_ids[]={$listId}"
-            . "&subtasks=true"
-            . "&include_closed=false"
-            . "&page={$page}";
+        if ($useListEndpoint) {
+            $endpoint = "/list/{$listId}/task?"
+                . "assignees[]={$userId}"
+                . "&subtasks=true"
+                . "&include_closed=false"
+                . "&page={$page}";
+        } else {
+            $endpoint = "/team/{$workspaceId}/task?"
+                . "assignees[]={$userId}"
+                . "&list_ids[]={$listId}"
+                . "&subtasks=true"
+                . "&include_closed=false"
+                . "&page={$page}";
+        }
 
         $result = clickup_api_get($endpoint, $token);
 
         if (!$result['ok']) {
+            // If team endpoint fails (e.g. guest user), retry with list endpoint
+            if (!$useListEndpoint) {
+                $useListEndpoint = true;
+                $page = 0;
+                unset($result);
+                continue;
+            }
             db_log_sync_end($logId, 'error', $totalTasks, $result['error'] ?? 'API error');
             exit;
         }
 
         $tasks = $result['body']['tasks'] ?? [];
         $count = count($tasks);
+
+        // If team endpoint returned 0 on first page, try list endpoint
+        if ($count === 0 && $page === 0 && !$useListEndpoint) {
+            $useListEndpoint = true;
+            unset($result, $tasks);
+            continue;
+        }
 
         if ($count > 0) {
             db_upsert_tasks($tasks, $workspaceId);
