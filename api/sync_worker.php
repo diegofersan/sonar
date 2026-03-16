@@ -82,13 +82,25 @@ try {
         }
 
         $tasks = $result['body']['tasks'] ?? [];
-        $count = count($tasks);
 
-        if ($count === 0 && $page === 0 && !$useListEndpoint) {
+        if (count($tasks) === 0 && $page === 0 && !$useListEndpoint) {
             $useListEndpoint = true;
             unset($result, $tasks);
             continue;
         }
+
+        // List endpoint may ignore assignee filter for guests — filter in PHP
+        if ($useListEndpoint) {
+            $tasks = array_filter($tasks, function ($t) use ($userId) {
+                foreach ($t['assignees'] ?? [] as $a) {
+                    if ((string) ($a['id'] ?? '') === (string) $userId) return true;
+                }
+                return false;
+            });
+            $tasks = array_values($tasks);
+        }
+
+        $count = count($tasks);
 
         if ($count > 0) {
             db_upsert_tasks($tasks, $workspaceId);
