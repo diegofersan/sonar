@@ -25,15 +25,17 @@ try {
 
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $workspace = get_workspace();
+        $user = get_user();
         if (!$workspace) {
             echo json_encode(['status' => 'no_workspace']);
             exit;
         }
-        $lastSync = db_get_last_sync($workspace['id']);
+        $currentUserId = $user['id'] ?? null;
+        $lastSync = db_get_last_sync($workspace['id'], null, $currentUserId);
         $stmt = db()->prepare(
-            "SELECT * FROM sync_log WHERE workspace_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1"
+            "SELECT * FROM sync_log WHERE workspace_id = ? AND user_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1"
         );
-        $stmt->execute([$workspace['id']]);
+        $stmt->execute([$workspace['id'], $currentUserId]);
         $running = $stmt->fetch();
 
         echo json_encode([
@@ -137,58 +139,33 @@ try {
     $hasMore = true;
     $taskIds = [];
 
-    // Try team-level endpoint first (works for regular members)
-    // Fall back to list-level endpoint (required for guest users)
-    $useListEndpoint = false;
-
     while ($hasMore) {
-        if ($useListEndpoint) {
+        // Try team endpoint with assignee filter first
+        $endpoint = "/team/{$workspaceId}/task?"
+            . "assignees[]={$userId}"
+            . "&list_ids[]={$listId}"
+            . "&subtasks=true"
+            . "&include_closed=false"
+            . "&page={$page}";
+
+        $result = clickup_api_get($endpoint, $token);
+
+        // If team endpoint fails (common for guest users), try list endpoint
+        if (!$result['ok']) {
             $endpoint = "/list/{$listId}/task?"
                 . "assignees[]={$userId}"
                 . "&subtasks=true"
                 . "&include_closed=false"
                 . "&page={$page}";
-        } else {
-            $endpoint = "/team/{$workspaceId}/task?"
-                . "assignees[]={$userId}"
-                . "&list_ids[]={$listId}"
-                . "&subtasks=true"
-                . "&include_closed=false"
-                . "&page={$page}";
-        }
+            $result = clickup_api_get($endpoint, $token);
 
-        $result = clickup_api_get($endpoint, $token);
-
-        if (!$result['ok']) {
-            // If team endpoint fails (e.g. guest user), retry with list endpoint
-            if (!$useListEndpoint) {
-                $useListEndpoint = true;
-                $page = 0;
-                unset($result);
-                continue;
+            if (!$result['ok']) {
+                db_log_sync_end($logId, 'error', $totalTasks, $result['error'] ?? 'API error');
+                exit;
             }
-            db_log_sync_end($logId, 'error', $totalTasks, $result['error'] ?? 'API error');
-            exit;
         }
 
         $tasks = $result['body']['tasks'] ?? [];
-
-        // If team endpoint returned 0 on first page, try list endpoint
-        if (count($tasks) === 0 && $page === 0 && !$useListEndpoint) {
-            $useListEndpoint = true;
-            unset($result, $tasks);
-            continue;
-        }
-
-        // ClickUp may ignore assignee filter for guest users — filter in PHP
-        $tasks = array_filter($tasks, function ($t) use ($userId) {
-            foreach ($t['assignees'] ?? [] as $a) {
-                if ((string) ($a['id'] ?? '') === (string) $userId) return true;
-            }
-            return false;
-        });
-        $tasks = array_values($tasks);
-
         $count = count($tasks);
 
         if ($count > 0) {

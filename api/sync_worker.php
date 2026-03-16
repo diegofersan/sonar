@@ -48,56 +48,34 @@ try {
     $page = 0;
     $hasMore = true;
     $taskIds = []; // track fetched task IDs
-    $useListEndpoint = false;
 
-    // Fetch only tasks assigned to this user
-    // Try team-level endpoint first, fall back to list-level for guest users
     while ($hasMore) {
-        if ($useListEndpoint) {
+        // Try team endpoint with assignee filter first
+        $endpoint = "/team/{$workspaceId}/task?"
+            . "assignees[]={$userId}"
+            . "&list_ids[]={$listId}"
+            . "&subtasks=true"
+            . "&include_closed=false"
+            . "&page={$page}";
+
+        $result = clickup_api_get($endpoint, $token);
+
+        // If team endpoint fails (common for guest users), try list endpoint
+        if (!$result['ok']) {
             $endpoint = "/list/{$listId}/task?"
                 . "assignees[]={$userId}"
                 . "&subtasks=true"
                 . "&include_closed=false"
                 . "&page={$page}";
-        } else {
-            $endpoint = "/team/{$workspaceId}/task?"
-                . "assignees[]={$userId}"
-                . "&list_ids[]={$listId}"
-                . "&subtasks=true"
-                . "&include_closed=false"
-                . "&page={$page}";
-        }
+            $result = clickup_api_get($endpoint, $token);
 
-        $result = clickup_api_get($endpoint, $token);
-
-        if (!$result['ok']) {
-            if (!$useListEndpoint) {
-                $useListEndpoint = true;
-                $page = 0;
-                unset($result);
-                continue;
+            if (!$result['ok']) {
+                db_log_sync_end($logId, 'error', $totalTasks, $result['error'] ?? 'API error');
+                exit(1);
             }
-            db_log_sync_end($logId, 'error', $totalTasks, $result['error'] ?? 'API error');
-            exit(1);
         }
 
         $tasks = $result['body']['tasks'] ?? [];
-
-        if (count($tasks) === 0 && $page === 0 && !$useListEndpoint) {
-            $useListEndpoint = true;
-            unset($result, $tasks);
-            continue;
-        }
-
-        // ClickUp may ignore assignee filter for guest users — filter in PHP
-        $tasks = array_filter($tasks, function ($t) use ($userId) {
-            foreach ($t['assignees'] ?? [] as $a) {
-                if ((string) ($a['id'] ?? '') === (string) $userId) return true;
-            }
-            return false;
-        });
-        $tasks = array_values($tasks);
-
         $count = count($tasks);
 
         if ($count > 0) {

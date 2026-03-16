@@ -184,7 +184,7 @@ try {
         return $b['urgency_score'] - $a['urgency_score'];
     });
 
-    $lastSync = db_get_last_sync($workspaceId);
+    $lastSync = db_get_last_sync($workspaceId, null, $userId);
 
     echo json_encode([
         'tasks' => $enrichedTasks,

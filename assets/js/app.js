@@ -210,7 +210,7 @@
     var readyContainer = document.getElementById('ready-list');
     var futureContainer = document.getElementById('future-list');
     var cancelledContainer = document.getElementById('cancelled-list');
-    if (!readyContainer) return;
+    if (!readyContainer) return 0;
 
     readyContainer.innerHTML =
       '<div class="loading-container">' +
@@ -235,6 +235,8 @@
       updateTabCount('cancelled-count', _allTasks.cancelled.length);
       updateTaskCount(_allTasks.ready.length);
       updateLastSync(data.last_sync);
+
+      return all.length;
     } catch (err) {
       readyContainer.innerHTML =
         '<div class="error-message">Erro ao carregar tarefas. ' + escapeHtml(err.message) + '</div>';
@@ -245,6 +247,7 @@
           '<p>Clica em "Sync" para importar as tuas tarefas do ClickUp.</p>' +
           '</div>';
       }
+      return 0;
     }
   }
 
@@ -616,8 +619,8 @@
       try {
         var status = await apiFetch('/api/sync.php'); // GET = check status
         if (!status.running) {
-          Toast.success('Sync completo: ' + (status.last_count || 0) + ' tarefas');
-          fetchTasks();
+          var visibleCount = await fetchTasks();
+          Toast.success('Sync completo: ' + visibleCount + ' tarefas');
           fetchUnreadCount();
           btn.disabled = false;
           btn.classList.remove('syncing');

@@ -135,6 +135,7 @@ function db_migrate(): void
 
         CREATE INDEX IF NOT EXISTS idx_notifications_unseen
             ON task_notifications(workspace_id, seen, created_at DESC);
+
     SQL);
 }
 
@@ -539,9 +540,10 @@ function db_log_sync_end(int $log_id, string $status, int $task_count = 0, ?stri
  *
  * @param string      $workspace_id Workspace / team ID.
  * @param string|null $list_id      Optional list filter.
+ * @param string|null $user_id      Optional user filter.
  * @return array|null               Sync log row or null.
  */
-function db_get_last_sync(string $workspace_id, ?string $list_id = null): ?array
+function db_get_last_sync(string $workspace_id, ?string $list_id = null, ?string $user_id = null): ?array
 {
     $sql = <<<'SQL'
         SELECT *
@@ -555,6 +557,11 @@ function db_get_last_sync(string $workspace_id, ?string $list_id = null): ?array
     if ($list_id !== null) {
         $sql .= ' AND list_id = :list_id';
         $params[':list_id'] = $list_id;
+    }
+
+    if ($user_id !== null) {
+        $sql .= ' AND user_id = :user_id';
+        $params[':user_id'] = $user_id;
     }
 
     $sql .= ' ORDER BY completed_at DESC LIMIT 1';
