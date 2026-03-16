@@ -29,7 +29,12 @@ function calculate_urgency($task) {
     // Parent/post due date: 0-20 points
     $parentScore = score_due_date($task['post_due_date'] ?? null, 20);
 
-    return (int) round($designScore + $priorityScore + $parentScore);
+    return [
+        'total' => (int) round($designScore + $priorityScore + $parentScore),
+        'design' => (int) round($designScore),
+        'priority' => (int) round($priorityScore),
+        'post' => (int) round($parentScore),
+    ];
 }
 
 try {
@@ -167,7 +172,11 @@ try {
         }
 
         // Calculate urgency score (0-100, higher = more urgent)
-        $task['urgency_score'] = calculate_urgency($task);
+        $urgency = calculate_urgency($task);
+        $task['urgency_score'] = $urgency['total'];
+        $task['urgency_design'] = $urgency['design'];
+        $task['urgency_priority'] = $urgency['priority'];
+        $task['urgency_post'] = $urgency['post'];
 
         $enrichedTasks[] = $task;
     }

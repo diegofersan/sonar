@@ -41,6 +41,7 @@ try {
         echo json_encode([
             'running' => $running ? true : false,
             'started_at' => $running ? $running['started_at'] : null,
+            'progress' => $running ? ($running['progress'] ?? null) : null,
             'last_sync' => $lastSync ? $lastSync['completed_at'] : null,
             'last_count' => $lastSync ? $lastSync['task_count'] : null,
         ]);
@@ -134,6 +135,8 @@ try {
     $stmtClear = db()->prepare('DELETE FROM task_assignees WHERE user_id = ?');
     $stmtClear->execute([$userId]);
 
+    db_sync_progress($logId, 'A importar tarefas...');
+
     $totalTasks = 0;
     $page = 0;
     $hasMore = true;
@@ -157,6 +160,7 @@ try {
                 . "&subtasks=true"
                 . "&include_closed=false"
                 . "&page={$page}";
+
             $result = clickup_api_get($endpoint, $token);
 
             if (!$result['ok']) {
@@ -174,6 +178,7 @@ try {
                 $taskIds[] = $t['id'];
             }
             $totalTasks += $count;
+            db_sync_progress($logId, "A importar tarefas... ({$totalTasks})");
         }
 
         unset($result, $tasks);
@@ -182,7 +187,9 @@ try {
         if ($page >= 20) break;
     }
 
-    // Fetch parent chain for breadcrumbs
+    // Fetch parent chain for breadcrumbs (skip already cached parents)
+    db_sync_progress($logId, 'A carregar contexto...');
+
     $parentIds = [];
     foreach ($taskIds as $tid) {
         $task = db_get_task($tid);
@@ -194,16 +201,29 @@ try {
     $fetched = $taskIds;
     $toFetch = array_unique($parentIds);
     $maxDepth = 10;
+    $parentCount = 0;
 
     while (!empty($toFetch) && $maxDepth > 0) {
         $nextFetch = [];
         foreach ($toFetch as $pid) {
             if (in_array($pid, $fetched)) continue;
 
+            // Skip if already in DB
+            $existing = db_get_task($pid);
+            if ($existing) {
+                $fetched[] = $pid;
+                if (!empty($existing['parent_id']) && !in_array($existing['parent_id'], $fetched)) {
+                    $nextFetch[] = $existing['parent_id'];
+                }
+                continue;
+            }
+
             $res = clickup_api_get("/task/{$pid}", $token);
             if ($res['ok'] && !empty($res['body'])) {
                 db_upsert_task($res['body'], $workspaceId);
                 $fetched[] = $pid;
+                $parentCount++;
+                db_sync_progress($logId, "A carregar contexto... ({$parentCount})");
 
                 $pp = $res['body']['parent'] ?? null;
                 if ($pp && !in_array($pp, $fetched)) {
@@ -216,8 +236,13 @@ try {
         $maxDepth--;
     }
 
-    // Fetch sibling subtasks (Copy/Design)
+    // Fetch sibling subtasks (Copy/Design) — deduplicate by post ID
+    db_sync_progress($logId, 'A carregar subtarefas...');
+
     $allFetched = $fetched;
+    $processedPosts = [];
+    $siblingCount = 0;
+
     foreach ($taskIds as $tid) {
         $task = db_get_task($tid);
         if (!$task) continue;
@@ -225,7 +250,9 @@ try {
         $taskNameLower = strtolower($task['name']);
         $isSubtask = (strpos($taskNameLower, 'design') !== false || strpos($taskNameLower, 'copy') !== false);
         $postId = $isSubtask ? $task['parent_id'] : $task['id'];
-        if (!$postId) continue;
+        if (!$postId || in_array($postId, $processedPosts)) continue;
+        $processedPosts[] = $postId;
+        db_sync_progress($logId, 'A carregar subtarefas... (' . count($processedPosts) . ')');
 
         $res = clickup_api_get("/task/{$postId}?include_subtasks=true", $token);
         if ($res['ok'] && !empty($res['body']['subtasks'])) {
@@ -239,16 +266,19 @@ try {
                         if ($fullSub['ok'] && !empty($fullSub['body'])) {
                             db_upsert_task($fullSub['body'], $workspaceId);
                             $allFetched[] = $sub['id'];
+                            $siblingCount++;
                             continue;
                         }
                     }
                     db_upsert_task($sub, $workspaceId);
                     $allFetched[] = $sub['id'];
+                    $siblingCount++;
                 }
             }
         }
         unset($res);
     }
+
 
     // Save list config
     $stmt = db()->prepare('SELECT list_name FROM tasks WHERE list_id = ? LIMIT 1');
@@ -257,6 +287,7 @@ try {
     db_save_list_config($listId, $row ? $row['list_name'] : 'Content', $workspaceId);
 
     db_cleanup_notifications($workspaceId);
+
     db_log_sync_end($logId, 'success', $totalTasks);
 
 } catch (\Throwable $e) {

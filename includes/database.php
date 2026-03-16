@@ -137,6 +137,22 @@ function db_migrate(): void
             ON task_notifications(workspace_id, seen, created_at DESC);
 
     SQL);
+
+    // Add progress column if it doesn't exist
+    try {
+        $pdo->exec('ALTER TABLE sync_log ADD COLUMN progress TEXT');
+    } catch (\Throwable $e) {
+        // Column already exists — ignore
+    }
+}
+
+/**
+ * Update the progress message for a running sync.
+ */
+function db_sync_progress(int $logId, string $message): void
+{
+    $stmt = db()->prepare('UPDATE sync_log SET progress = ? WHERE id = ?');
+    $stmt->execute([$message, $logId]);
 }
 
 // ---------------------------------------------------------------------------

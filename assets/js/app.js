@@ -480,22 +480,51 @@
       if (task.urgency_score >= 70) urgencyClass = 'urgency-critical';
       else if (task.urgency_score >= 50) urgencyClass = 'urgency-high';
       else if (task.urgency_score >= 30) urgencyClass = 'urgency-medium';
-      urgencyBadge = '<span class="urgency-badge ' + urgencyClass + '">' + escapeHtml(String(task.urgency_score || 0)) + '</span>';
+      var dScore = task.urgency_design || 0;
+      var pScore = task.urgency_priority || 0;
+      var postScore = task.urgency_post || 0;
+      urgencyBadge = '<span class="urgency-badge ' + urgencyClass + '">'
+        + escapeHtml(String(task.urgency_score || 0))
+        + '<span class="urgency-tooltip">'
+        + '<div class="tooltip-title">Pontua\u00e7\u00e3o de urg\u00eancia</div>'
+        + '<div class="tooltip-row"><span class="tooltip-row-label">Data design</span>'
+        + '<span class="tooltip-row-bar"><span class="tooltip-row-bar-fill" style="width:' + (dScore * 2) + '%;background:' + (urgencyClass === 'urgency-critical' ? '#f44336' : urgencyClass === 'urgency-high' ? '#ff9800' : urgencyClass === 'urgency-medium' ? '#ffc107' : '#a0a0b0') + '"></span></span>'
+        + '<span class="tooltip-row-value">' + dScore + '/50</span></div>'
+        + '<div class="tooltip-row"><span class="tooltip-row-label">Prioridade</span>'
+        + '<span class="tooltip-row-bar"><span class="tooltip-row-bar-fill" style="width:' + Math.round(pScore / 30 * 100) + '%;background:' + (urgencyClass === 'urgency-critical' ? '#f44336' : urgencyClass === 'urgency-high' ? '#ff9800' : urgencyClass === 'urgency-medium' ? '#ffc107' : '#a0a0b0') + '"></span></span>'
+        + '<span class="tooltip-row-value">' + pScore + '/30</span></div>'
+        + '<div class="tooltip-row"><span class="tooltip-row-label">Data post</span>'
+        + '<span class="tooltip-row-bar"><span class="tooltip-row-bar-fill" style="width:' + (postScore * 5) + '%;background:' + (urgencyClass === 'urgency-critical' ? '#f44336' : urgencyClass === 'urgency-high' ? '#ff9800' : urgencyClass === 'urgency-medium' ? '#ffc107' : '#a0a0b0') + '"></span></span>'
+        + '<span class="tooltip-row-value">' + postScore + '/20</span></div>'
+        + '<hr class="tooltip-divider">'
+        + '<div class="tooltip-total"><span>Total</span><span>' + (task.urgency_score || 0) + '/100</span></div>'
+        + '</span></span>';
     }
 
     var taskId = task.post_id || task.id || '';
     var isWatched = task.watched ? 'true' : 'false';
     var watchTitle = task.watched ? 'Deixar de seguir' : 'Seguir tarefa';
-    var watchBtn = '<button class="task-watch" data-task-id="' + escapeHtml(String(taskId)) + '" data-watched="' + isWatched + '" title="' + watchTitle + '">' +
+    var watchLabel = task.watched ? 'A seguir' : 'Seguir';
+    var watchBtn = '<button class="task-action task-watch" data-task-id="' + escapeHtml(String(taskId)) + '" data-watched="' + isWatched + '" title="' + watchTitle + '">' +
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>' +
         '<circle cx="12" cy="12" r="3"/>' +
       '</svg>' +
+      '<span>' + watchLabel + '</span>' +
     '</button>';
 
     var classes = 'task-card';
     if (isCancelled) classes += ' cancelled';
     if (task.priority_id) classes += ' priority-' + (parseInt(task.priority_id) || 0);
+
+    var clickupLink = '<a href="' + escapeHtml(task.post_url || task.url || '#') + '" target="_blank" class="task-action" title="Abrir no ClickUp">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+          '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>' +
+          '<polyline points="15 3 21 3 21 9"/>' +
+          '<line x1="10" y1="14" x2="21" y2="3"/>' +
+        '</svg>' +
+        '<span>ClickUp</span>' +
+      '</a>';
 
     return '<div class="' + classes + '">' +
       '<div class="card-top-row">' + leTag + copyIndicator + urgencyBadge + '</div>' +
@@ -503,14 +532,7 @@
         '<div class="task-name">' + escapeHtml(task.post_name || task.name) + '</div>' +
       '</div>' +
       '<div class="task-meta">' + priorityBadge + dueDate + '</div>' +
-      watchBtn +
-      '<a href="' + escapeHtml(task.post_url || task.url || '#') + '" target="_blank" class="task-link" title="Abrir no ClickUp">' +
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-          '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>' +
-          '<polyline points="15 3 21 3 21 9"/>' +
-          '<line x1="10" y1="14" x2="21" y2="3"/>' +
-        '</svg>' +
-      '</a>' +
+      '<div class="card-actions">' + watchBtn + clickupLink + '</div>' +
     '</div>';
   }
 
@@ -612,7 +634,7 @@
   }
 
   async function pollSyncStatus(btn, originalText) {
-    var maxAttempts = 60; // max 2 minutes (2s intervals)
+    var maxAttempts = 120; // max 4 minutes (2s intervals)
     for (var i = 0; i < maxAttempts; i++) {
       await new Promise(function(r) { setTimeout(r, 2000); });
 
@@ -626,6 +648,10 @@
           btn.classList.remove('syncing');
           btn.innerHTML = originalText;
           return;
+        }
+        // Update button with progress
+        if (status.progress) {
+          btn.innerHTML = '<span class="loading-spinner" style="width:16px;height:16px;border-width:2px;"></span> ' + status.progress;
         }
       } catch (err) {
         // Ignore polling errors, keep trying

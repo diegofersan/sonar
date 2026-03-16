@@ -499,6 +499,9 @@ a {
 
 /* Card top row with LE tag */
 .card-top-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
   margin-bottom: 0.25rem;
 }
 
@@ -521,7 +524,6 @@ a {
   background: rgba(76, 175, 80, 0.12);
   padding: 0.1rem 0.4rem;
   border-radius: 3px;
-  margin-left: 0.375rem;
 }
 
 .copy-pending {
@@ -532,7 +534,6 @@ a {
   background: rgba(160, 160, 176, 0.12);
   padding: 0.1rem 0.4rem;
   border-radius: 3px;
-  margin-left: 0.375rem;
 }
 
 /* Urgency badge */
@@ -544,6 +545,86 @@ a {
   border-radius: 3px;
   margin-left: auto;
   font-variant-numeric: tabular-nums;
+  position: relative;
+  cursor: default;
+}
+.urgency-badge .urgency-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  z-index: 100;
+  width: 220px;
+  padding: 0.625rem 0.75rem;
+  background: rgba(15, 15, 26, 0.82);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  font-weight: 400;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  pointer-events: none;
+}
+.urgency-badge .urgency-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  right: 12px;
+  border: 6px solid transparent;
+  border-top-color: var(--color-border);
+}
+.urgency-badge:hover .urgency-tooltip {
+  display: block;
+}
+.urgency-tooltip .tooltip-title {
+  font-weight: 700;
+  font-size: 0.7rem;
+  color: var(--color-text-primary);
+  margin-bottom: 0.4rem;
+}
+.urgency-tooltip .tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.15rem 0;
+}
+.urgency-tooltip .tooltip-row-label {
+  flex: 1;
+}
+.urgency-tooltip .tooltip-row-bar {
+  width: 60px;
+  height: 4px;
+  background: rgba(160, 160, 176, 0.15);
+  border-radius: 2px;
+  margin: 0 0.5rem;
+  overflow: hidden;
+}
+.urgency-tooltip .tooltip-row-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: currentColor;
+}
+.urgency-tooltip .tooltip-row-value {
+  width: 28px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.urgency-tooltip .tooltip-divider {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 0.35rem 0;
+}
+.urgency-tooltip .tooltip-total {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  font-size: 0.75rem;
 }
 .urgency-low {
   color: var(--color-text-secondary);
@@ -673,34 +754,42 @@ a {
   border-radius: 4px;
 }
 
-/* Task link */
-.task-link {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
+/* Card actions bar */
+.card-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  border-radius: 4px;
-  color: var(--color-text-secondary);
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
   opacity: 0;
-  transition: opacity var(--transition), background var(--transition), color var(--transition);
-  text-decoration: none;
-  font-size: 0;
+  transition: opacity var(--transition);
 }
-
-.task-link svg {
-  width: 14px;
-  height: 14px;
-}
-
-.task-card:hover .task-link {
+.task-card:hover .card-actions,
+.card-actions:has(.task-watch[data-watched="true"]) {
   opacity: 1;
 }
-
-.task-link:hover {
+.task-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: 0.6875rem;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background var(--transition), color var(--transition);
+}
+.task-action svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+.task-action:hover {
   color: var(--color-primary);
   background: var(--color-primary-subtle);
 }
@@ -927,28 +1016,8 @@ a {
 }
 
 /* ---------- Watch Button (task card) ---------- */
-.task-watch {
-  position: absolute;
-  top: 0.5rem;
-  right: 2.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: none;
-  color: var(--color-text-secondary);
-  opacity: 0;
-  cursor: pointer;
-  transition: opacity var(--transition), background var(--transition), color var(--transition);
-}
 .task-watch svg { width: 14px; height: 14px; }
-.task-card:hover .task-watch { opacity: 1; }
-.task-watch[data-watched="true"] { opacity: 1; color: var(--color-primary); }
-.task-watch:hover { color: var(--color-primary); background: var(--color-primary-subtle); }
+.task-watch[data-watched="true"] { color: var(--color-primary); }
 
 /* ---------- Header Notification Bell ---------- */
 .notif-wrapper { position: relative; }
