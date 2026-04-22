@@ -88,7 +88,7 @@ vai com commit próprio por incluir revisão da spec + do próprio `tasks.md`.
 
 ## Fase D — Endpoint
 
-### [ ] 5. `api/workload_forecast.php`
+### [x] 5. `api/workload_forecast.php`
 
 - GET only. `is_authenticated()` → 401. `is_department_head()` → 403.
 - Fluxo:
