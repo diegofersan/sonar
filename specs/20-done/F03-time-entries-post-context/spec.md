@@ -1,6 +1,6 @@
 # F03 — Contexto de post nas time entries (popup Colaboradores)
 
-**Status:** approved
+**Status:** done
 **Tipo:** feature
 **Criada em:** 2026-04-22
 
