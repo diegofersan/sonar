@@ -209,6 +209,89 @@ Dois caminhos, a escolher antes das tarefas:
 **Proposta default**: começar por (2) — separação clara preditivo / descritivo — e
 avaliar fusão mais tarde se fizer sentido.
 
+## Decisões pós-spike (2026-04-22)
+
+Resultados do `tests/spike_workload.php` contra workspace `2590506`:
+
+| Métrica                          | Valor | Fonte   |
+| -------------------------------- | ----: | ------- |
+| Total tasks no cache             |   368 | SQLite  |
+| Com `start_date`                 |  7.9 %| SQLite  |
+| Com `due_date`                   | 52.2 %| SQLite  |
+| Com `parent_id` (são subtasks)   | 96.5 %| SQLite  |
+| **Com `time_estimate > 0`**      |   **3 %** | API (sample 100) |
+| Status terminal                  | 36 %  | API sample |
+| Double-count parent+child estimate | 0 | API sample |
+
+### Descoberta central
+
+Só **3 %** das tasks têm `time_estimate` preenchido. A feature na forma original
+("horas planeadas vs capacidade") ia mostrar barras vazias e contadores enormes de
+"sem estimativa" — sem valor imediato.
+
+### Pivot aprovado
+
+**Mudar de horas planeadas para contagem de tasks activas por dia.** Cada task
+atribuída a um colaborador conta como **1 unidade/dia** nos dias em que está activa
+(modelo C de distribuição continua válido, só muda a unidade). Capacidade diária passa
+a ser um **alvo de nº de tasks por dia** (configurável).
+
+Evolução futura natural: quando a equipa começar a preencher `time_estimate` com
+regularidade (> 30 %), ponderar voltar ao modelo de horas — o schema para isso está
+desenhado mas não implementado em v1.
+
+### Decisões revistas
+
+- **D1 (SAI)** — política para estimate null deixa de existir. V1 não usa estimates.
+- **D9 (ENTRA)** — **alvo diário de tasks por colaborador**, configurável.
+  `DAILY_TASKS_PER_USER` (mapa `user_id => int`) + `DEFAULT_DAILY_TASKS` (default **5**)
+  em `config.php`, override em `config.local.php` e env, mesmo padrão de `weekly_hours`.
+  Thresholds mantêm-se 80 % / 110 %: um dia com ≤ 4 tasks (80 % de 5) fica `under`,
+  entre 4 e 5.5 fica `ok`, > 5.5 fica `over`.
+- **D2 (MANTÉM)** — modelo C, mas a unidade distribuída é `1` (e depois somada) em vez
+  de horas. Dias úteis seg–sex apenas.
+- **D3 (ADAPTA)** — "capacidade diária" passa a ser alvo de nº de tasks (D9). Sáb/dom
+  continuam sem aparecer.
+- **D4 (FECHA LISTA)** — terminais confirmados (não entram no forecast):
+  `published`, `mês social terminado`, `post cancelado`, `linha editorial cancelada`,
+  `scheduled`, `ready to post`. Os dois últimos foram ambíguos; decisão: uma vez
+  scheduled/ready, não há mais trabalho de design activo. **Flipable** em 1 linha se
+  a equipa discordar. Lista fica como constante `FORECAST_TERMINAL_STATUSES` no topo
+  do helper.
+- **D5 (NOVA SEMÂNTICA)** — sem estimates, a pergunta "parent vs filho" muda: se uma
+  task tem children na mesma resposta, **só os filhos contam** (as leaves são o
+  trabalho real). Parents LE/mês não inflam contagens. Spike confirmou que parents
+  no workspace QRA são mesmo estruturais (96 % de tasks são subtasks).
+- **D6 (MANTÉM)** — grupo design.
+- **D7 (MANTÉM)** — semana corrente seg–sex.
+- **D8 (MANTÉM)** — nova vista "Plano da semana" na navbar.
+
+### Critérios de aceitação revistos
+
+Substituem os anteriores:
+
+- [ ] Existe entrada "Plano da semana" na navbar do `dashboard.php`, só visível para o
+      chefe de departamento (server-side, mesmo padrão do "Colaboradores").
+- [ ] A vista mostra, para cada colaborador do grupo design:
+      - Grelha seg–sex da semana corrente (Europe/Lisbon).
+      - Por dia: **nº de tasks activas** + alvo diário + estado `under/ok/over`
+        (thresholds 80 %/110 % do alvo configurado em `DEFAULT_DAILY_TASKS` /
+        `DAILY_TASKS_PER_USER`).
+      - Contador "N sem data" por dia, a cinzento, para tasks que existem para o
+        colaborador mas não podem ser colocadas (sem `start_date` nem `due_date`).
+- [ ] Dias `over` visualmente distintos, mesma linguagem do F01.
+- [ ] Overdue tasks contam em **hoje** com marcação visual.
+- [ ] Tasks em status terminal (lista em D4 revisto) são ignoradas.
+- [ ] Endpoint `api/workload_forecast.php` devolve 403/401 nas condições certas.
+- [ ] **Zero chamadas novas à API ClickUp.** Tudo do SQLite local. Nenhuma migration
+      de schema em v1 (as colunas `start_date`, `due_date`, `parent_id`, `status_name`
+      e a tabela `task_assignees` já contêm tudo o que é preciso).
+- [ ] Vista carrega em < 500 ms.
+- [ ] Nenhum sync existente é alterado.
+- [ ] Testes puros cobrem: distribuição C com start/due, fallback 1-dia, skip
+      fim-de-semana, skip status terminal, skip parent quando há filhos na resposta,
+      overdue empurrada para hoje, contador de "sem data", thresholds 80/110.
+
 ## Não-objetivos
 
 - **Não** altera o fluxo de time tracking nem a vista Colaboradores descritiva (F01
