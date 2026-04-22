@@ -191,23 +191,6 @@ function get_weekly_hours(string $user_id): int
 }
 
 /**
- * Daily task-count target configured for a given ClickUp user_id (F02).
- *
- * Looks up DAILY_TASKS_PER_USER; falls back to DEFAULT_DAILY_TASKS (5 if unset)
- * for user_ids not in the map. A user explicitly mapped to 0 returns 0 (not
- * the default) — useful to mark non-producing members without removing them
- * from the group.
- */
-function get_daily_tasks_target(string $user_id): int
-{
-    $map = defined('DAILY_TASKS_PER_USER') ? DAILY_TASKS_PER_USER : [];
-    if ($user_id !== '' && isset($map[$user_id])) {
-        return (int) $map[$user_id];
-    }
-    return defined('DEFAULT_DAILY_TASKS') ? (int) DEFAULT_DAILY_TASKS : 5;
-}
-
-/**
  * Read and validate the CSRF token from the X-CSRF-Token header or JSON body
  * field `_csrf`. Sends 403 and exits if validation fails.
  */

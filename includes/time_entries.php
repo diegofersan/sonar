@@ -2,8 +2,8 @@
 /**
  * F03 — Pure helpers for time-entries post-context resolution.
  *
- * Kept separate from workload.php so the parent-resolution flow is easy to
- * unit-test without loading DB/HTTP code.
+ * Isolated from DB/HTTP code so the parent-resolution flow is easy to
+ * unit-test.
  */
 
 declare(strict_types=1);

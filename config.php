@@ -17,9 +17,6 @@ if (file_exists($localConfig)) {
         defined('DEPARTMENT_HEAD_USER_ID') || define('DEPARTMENT_HEAD_USER_ID', (string)($config['department_head_user_id'] ?? ''));
         defined('WEEKLY_HOURS_PER_USER')   || define('WEEKLY_HOURS_PER_USER',   (array)($config['weekly_hours_per_user']    ?? []));
         defined('DEFAULT_WEEKLY_HOURS')    || define('DEFAULT_WEEKLY_HOURS',    (int)  ($config['default_weekly_hours']     ?? 40));
-        // F02 — daily task target (forecast view)
-        defined('DAILY_TASKS_PER_USER')    || define('DAILY_TASKS_PER_USER',    (array)($config['daily_tasks_per_user']     ?? []));
-        defined('DEFAULT_DAILY_TASKS')     || define('DEFAULT_DAILY_TASKS',     (int)  ($config['default_daily_tasks']      ?? 5));
     }
 }
 
@@ -30,8 +27,6 @@ defined('CLICKUP_REDIRECT_URI')    || define('CLICKUP_REDIRECT_URI',    getenv('
 defined('DEPARTMENT_HEAD_USER_ID') || define('DEPARTMENT_HEAD_USER_ID', getenv('DEPARTMENT_HEAD_USER_ID') ?: '');
 defined('WEEKLY_HOURS_PER_USER')   || define('WEEKLY_HOURS_PER_USER',   []);
 defined('DEFAULT_WEEKLY_HOURS')    || define('DEFAULT_WEEKLY_HOURS',    (int)(getenv('DEFAULT_WEEKLY_HOURS') ?: 40));
-defined('DAILY_TASKS_PER_USER')    || define('DAILY_TASKS_PER_USER',    []);
-defined('DEFAULT_DAILY_TASKS')     || define('DEFAULT_DAILY_TASKS',     (int)(getenv('DEFAULT_DAILY_TASKS') ?: 5));
 
 // ClickUp API base URL
 defined('CLICKUP_API_BASE') || define('CLICKUP_API_BASE', 'https://api.clickup.com/api/v2');
