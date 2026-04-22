@@ -109,11 +109,13 @@ try {
         $byUser[(string) $e['user_id']][] = $e;
     }
 
+    $numWeeks = count($weeks);
     $collaborators = [];
     foreach ($memberIds as $memberId) {
         $m            = $membersById[$memberId] ?? ['id' => $memberId];
         $userEntries  = $byUser[$memberId] ?? [];
         $weeklyHours  = get_weekly_hours($memberId);
+        $weekRows     = collab_aggregate_weeks($userEntries, $weeklyHours, $weeks, $tz);
 
         $collaborators[] = [
             'user' => [
@@ -125,7 +127,8 @@ try {
                 'profilePicture' => $m['profilePicture'] ?? null,
             ],
             'weekly_hours' => $weeklyHours,
-            'weeks'        => collab_aggregate_weeks($userEntries, $weeklyHours, $weeks, $tz),
+            'weeks'        => $weekRows,
+            'month_totals' => collab_month_totals($weekRows, $weeklyHours, $numWeeks),
         ];
     }
 

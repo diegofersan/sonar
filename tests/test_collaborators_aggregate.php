@@ -307,5 +307,57 @@ $pDec = collab_parse_month_param('2026-12', $tz, $jan2027);
 check('Dec-from-next-year accepted',        $pDec !== null && $pDec->format('Y-m-d') === '2026-12-01');
 
 // ---------------------------------------------------------------------------
+// 7. collab_month_totals
+// ---------------------------------------------------------------------------
+echo "\n7. collab_month_totals\n";
+
+// Happy case: 4 weeks × 40h = 160h expected, 158h worked → ok.
+$weeksOk = [
+    ['total_hours' => 40.0],
+    ['total_hours' => 38.5],
+    ['total_hours' => 42.0],
+    ['total_hours' => 37.5],
+];
+$tOk = collab_month_totals($weeksOk, 40, 4);
+check('expected = weekly × num_weeks',   $tOk['expected_hours'] === 160.0);
+check('worked sums week totals',          $tOk['worked_hours']   === 158.0);
+check('158/160 ratio → ok',               $tOk['status']         === 'ok');
+
+// Under: 90h / 160h = 0.56 → under.
+$weeksUnder = [
+    ['total_hours' => 20.0],
+    ['total_hours' => 30.0],
+    ['total_hours' => 25.0],
+    ['total_hours' => 15.0],
+];
+$tU = collab_month_totals($weeksUnder, 40, 4);
+check('90/160 → under',                   $tU['status'] === 'under' && $tU['worked_hours'] === 90.0);
+
+// Over: 200h / 160h = 1.25 → over.
+$weeksOver = [
+    ['total_hours' => 50.0],
+    ['total_hours' => 55.0],
+    ['total_hours' => 45.0],
+    ['total_hours' => 50.0],
+];
+$tO = collab_month_totals($weeksOver, 40, 4);
+check('200/160 → over',                   $tO['status'] === 'over' && $tO['worked_hours'] === 200.0);
+
+// Empty weeks but non-zero num_weeks: expected still reflects capacity.
+$tEmpty = collab_month_totals([], 40, 5);
+check('empty weeks, worked = 0',          $tEmpty['worked_hours']   === 0.0);
+check('empty weeks, expected = 40×5',     $tEmpty['expected_hours'] === 200.0);
+check('empty weeks → under',              $tEmpty['status']         === 'under');
+
+// weekly_hours = 0 degenerate: any work → over (consistent with collab_status).
+$tZero = collab_month_totals([['total_hours' => 5.0]], 0, 4);
+check('weekly=0, worked=5 → over',        $tZero['status'] === 'over' && $tZero['expected_hours'] === 0.0);
+
+// Missing total_hours key in a week → treated as 0.
+$weeksMix = [['total_hours' => 10.0], [], ['total_hours' => 5.0]];
+$tMix = collab_month_totals($weeksMix, 40, 3);
+check('missing total_hours → 0',          $tMix['worked_hours'] === 15.0);
+
+// ---------------------------------------------------------------------------
 echo "\nPassed: $pass\nFailed: $fail\n";
 exit($fail === 0 ? 0 : 1);

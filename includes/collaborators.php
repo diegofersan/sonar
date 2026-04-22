@@ -251,3 +251,34 @@ function collab_aggregate_weeks(
     }
     return $out;
 }
+
+/**
+ * Roll the per-week output of `collab_aggregate_weeks` into a single
+ * month-level summary: expected capacity, worked total, and a status badge
+ * built from the same thresholds used per week.
+ *
+ * `expected_hours` = weekly_hours × number of ISO weeks in the window. This
+ * matches what the view shows (weeks that straddle month boundaries count
+ * fully on both sides) — the goal is a number the user can reconcile with
+ * the table, not a pro-rated capacity.
+ *
+ * @param array $weeks         Output of collab_aggregate_weeks.
+ * @param int   $weekly_hours  Same capacity fed to the aggregator.
+ * @param int   $num_weeks     Count of ISO weeks in the window (len(weeks_meta)).
+ *                             Passed explicitly so an empty $weeks doesn't
+ *                             collapse expected to 0.
+ * @return array{expected_hours:float, worked_hours:float, status:string}
+ */
+function collab_month_totals(array $weeks, int $weekly_hours, int $num_weeks): array
+{
+    $worked = 0.0;
+    foreach ($weeks as $w) {
+        $worked += (float) ($w['total_hours'] ?? 0);
+    }
+    $expected = (float) ($weekly_hours * $num_weeks);
+    return [
+        'expected_hours' => round($expected, 2),
+        'worked_hours'   => round($worked, 2),
+        'status'         => collab_status($worked, (int) round($expected)),
+    ];
+}
