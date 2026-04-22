@@ -572,13 +572,14 @@ function db_clear_list_tasks(string $list_id): void
  * @param string      $workspace_id Workspace / team ID.
  * @param string|null $user_id      Optional user scope.
  * @param string|null $list_id      Optional list scope.
+ * @param string      $scope        Sync kind: 'tasks' (default) or 'time_entries' (F01).
  * @return int                      The new sync_log row ID.
  */
-function db_log_sync_start(string $workspace_id, ?string $user_id, ?string $list_id): int
+function db_log_sync_start(string $workspace_id, ?string $user_id, ?string $list_id, string $scope = 'tasks'): int
 {
     $stmt = db()->prepare(<<<'SQL'
-        INSERT INTO sync_log (workspace_id, user_id, list_id, started_at, status)
-        VALUES (:workspace_id, :user_id, :list_id, :started_at, 'running')
+        INSERT INTO sync_log (workspace_id, user_id, list_id, started_at, status, scope)
+        VALUES (:workspace_id, :user_id, :list_id, :started_at, 'running', :scope)
     SQL);
 
     $stmt->execute([
@@ -586,6 +587,7 @@ function db_log_sync_start(string $workspace_id, ?string $user_id, ?string $list
         ':user_id'      => $user_id,
         ':list_id'      => $list_id,
         ':started_at'   => time(),
+        ':scope'        => $scope,
     ]);
 
     return (int) db()->lastInsertId();
@@ -628,7 +630,7 @@ function db_log_sync_end(int $log_id, string $status, int $task_count = 0, ?stri
  * @param string|null $user_id      Optional user filter.
  * @return array|null               Sync log row or null.
  */
-function db_get_last_sync(string $workspace_id, ?string $list_id = null, ?string $user_id = null): ?array
+function db_get_last_sync(string $workspace_id, ?string $list_id = null, ?string $user_id = null, ?string $scope = null): ?array
 {
     $sql = <<<'SQL'
         SELECT *
@@ -647,6 +649,11 @@ function db_get_last_sync(string $workspace_id, ?string $list_id = null, ?string
     if ($user_id !== null) {
         $sql .= ' AND user_id = :user_id';
         $params[':user_id'] = $user_id;
+    }
+
+    if ($scope !== null) {
+        $sql .= ' AND scope = :scope';
+        $params[':scope'] = $scope;
     }
 
     $sql .= ' ORDER BY completed_at DESC LIMIT 1';

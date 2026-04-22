@@ -31,9 +31,9 @@ try {
             exit;
         }
         $currentUserId = $user['id'] ?? null;
-        $lastSync = db_get_last_sync($workspace['id'], null, $currentUserId);
+        $lastSync = db_get_last_sync($workspace['id'], null, $currentUserId, 'tasks');
         $stmt = db()->prepare(
-            "SELECT * FROM sync_log WHERE workspace_id = ? AND user_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1"
+            "SELECT * FROM sync_log WHERE workspace_id = ? AND user_id = ? AND scope = 'tasks' AND status = 'running' ORDER BY started_at DESC LIMIT 1"
         );
         $stmt->execute([$workspace['id'], $currentUserId]);
         $running = $stmt->fetch();
@@ -77,17 +77,18 @@ try {
 
     $workspaceId = $workspace['id'];
 
-    // Mark stale syncs (running > 5 min) as failed
+    // Mark stale syncs (running > 5 min) as failed — scoped to tasks so we
+    // don't touch a concurrent time_entries sync.
     $staleTimeout = time() - 300;
     $stmtStale = db()->prepare(
-        "UPDATE sync_log SET status = 'error', error_message = 'Timeout' WHERE workspace_id = ? AND status = 'running' AND started_at < ?"
+        "UPDATE sync_log SET status = 'error', error_message = 'Timeout' WHERE workspace_id = ? AND scope = 'tasks' AND status = 'running' AND started_at < ?"
     );
     $stmtStale->execute([$workspaceId, $staleTimeout]);
 
-    // Force sync: cancel any running sync
+    // Force sync: cancel any running tasks sync (not time_entries)
     $force = !empty($input['force']);
     $stmtRunning = db()->prepare(
-        "SELECT id FROM sync_log WHERE workspace_id = ? AND status = 'running' LIMIT 1"
+        "SELECT id FROM sync_log WHERE workspace_id = ? AND scope = 'tasks' AND status = 'running' LIMIT 1"
     );
     $stmtRunning->execute([$workspaceId]);
     if ($stmtRunning->fetch()) {
@@ -97,7 +98,7 @@ try {
             exit;
         }
         $stmtCancel = db()->prepare(
-            "UPDATE sync_log SET status = 'cancelled', error_message = 'Cancelled by user' WHERE workspace_id = ? AND status = 'running'"
+            "UPDATE sync_log SET status = 'cancelled', error_message = 'Cancelled by user' WHERE workspace_id = ? AND scope = 'tasks' AND status = 'running'"
         );
         $stmtCancel->execute([$workspaceId]);
     }
@@ -105,7 +106,7 @@ try {
     $listId = $input['list_id'] ?? '46726233';
     $userId = $user['id'] ?? '';
 
-    $logId = db_log_sync_start($workspaceId, $userId, $listId);
+    $logId = db_log_sync_start($workspaceId, $userId, $listId, 'tasks');
 
     // Release session lock so polling requests aren't blocked
     session_write_close();

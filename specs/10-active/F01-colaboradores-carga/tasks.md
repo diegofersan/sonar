@@ -94,7 +94,7 @@ Em `includes/clickup.php`, adicionar os helpers necessários conforme o spike:
 
 ## Fase C — Endpoints
 
-### [ ] 6. `api/sync_time_entries.php`
+### [x] 6. `api/sync_time_entries.php`
 
 - POST: valida auth + `is_department_head()` (403 se falhar). Segue o padrão de `api/sync.php`:
   - stale timeout, cancel de running com `force`, `session_write_close`, `fastcgi_finish_request`.
