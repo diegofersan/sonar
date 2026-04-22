@@ -51,9 +51,17 @@ try {
     }
     $workspaceId = $workspace['id'];
 
-    // Month window (ISO-week aligned, Europe/Lisbon)
+    // Month window (ISO-week aligned, Europe/Lisbon).
+    // `?month=YYYY-MM` selects a past month; absent = current month.
     $tz  = new DateTimeZone('Europe/Lisbon');
-    $now = new DateTimeImmutable('now', $tz);
+    try {
+        $anchor = collab_parse_month_param($_GET['month'] ?? null, $tz);
+    } catch (InvalidArgumentException $e) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid month']);
+        exit;
+    }
+    $now = $anchor ?? new DateTimeImmutable('now', $tz);
     [$windowStart, $windowEnd] = collab_month_window($tz, $now);
     $weeks   = collab_iso_weeks($windowStart, $windowEnd);
     $startMs = $windowStart->getTimestamp() * 1000;

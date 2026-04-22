@@ -101,6 +101,19 @@ try {
     $workspaceId = $workspace['id'];
     $userId      = $user['id'] ?? '';
 
+    // Optional month target (?month=YYYY-MM or JSON body field). Null = current month.
+    $tz = new DateTimeZone('Europe/Lisbon');
+    try {
+        $monthAnchor = collab_parse_month_param(
+            $_GET['month'] ?? ($input['month'] ?? null),
+            $tz
+        );
+    } catch (InvalidArgumentException $e) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid month']);
+        exit;
+    }
+
     // Stale timeout, scoped to time_entries so a tasks sync isn't affected.
     $staleTimeout = time() - 300;
     db()->prepare(
@@ -167,11 +180,11 @@ try {
         exit;
     }
 
-    // Window covers every ISO week that has at least one day in the current
+    // Window covers every ISO week that has at least one day in the target
     // month (Europe/Lisbon). Matches what api/collaborators.php aggregates,
     // so the sync does not leave boundary-straddling weeks half-populated.
-    $tz = new DateTimeZone('Europe/Lisbon');
-    [$windowStart, $windowEnd] = collab_month_window($tz);
+    // $monthAnchor (parsed above) selects a past month; null = current.
+    [$windowStart, $windowEnd] = collab_month_window($tz, $monthAnchor);
     $startMs = $windowStart->getTimestamp() * 1000;
     $endMs   = $windowEnd->getTimestamp()   * 1000;
 
