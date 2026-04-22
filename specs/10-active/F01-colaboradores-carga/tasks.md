@@ -122,7 +122,7 @@ Em `includes/clickup.php`, adicionar os helpers necessários conforme o spike:
 
 ## Fase D — Frontend
 
-### [ ] 8. Navbar + rename "Linha Editorial"
+### [x] 8. Navbar + rename "Linha Editorial"
 
 - `dashboard.php`:
   - Acrescenta navbar de topo (componente HTML, sem framework) com "Linha Editorial" sempre + "Colaboradores" dentro de `<?php if (is_department_head()): ?>`.

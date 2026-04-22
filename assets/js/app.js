@@ -1038,6 +1038,45 @@
     return div.innerHTML;
   }
 
+  /* ---------- View router (F01) ---------- */
+
+  function showView(name) {
+    var sections = document.querySelectorAll('section.view[data-view]');
+    if (!sections.length) return;
+    var matched = false;
+    sections.forEach(function (sec) {
+      var match = sec.getAttribute('data-view') === name;
+      sec.style.display = match ? '' : 'none';
+      if (match) matched = true;
+    });
+    // Fallback: if the requested view doesn't exist (e.g. non-heads hitting
+    // #collaborators), show the editorial view.
+    if (!matched) {
+      sections.forEach(function (sec) {
+        sec.style.display = sec.getAttribute('data-view') === 'editorial' ? '' : 'none';
+      });
+      name = 'editorial';
+    }
+    document.querySelectorAll('.app-navbar .nav-link[data-nav]').forEach(function (a) {
+      a.classList.toggle('active', a.getAttribute('data-nav') === name);
+    });
+  }
+
+  function bindNavbar() {
+    var links = document.querySelectorAll('.app-navbar .nav-link[data-nav]');
+    if (!links.length) return;
+    links.forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        showView(a.getAttribute('data-nav'));
+      });
+    });
+    // Pick the initial view from the URL hash (so deep links / refresh work).
+    var initial = (location.hash || '').replace(/^#/, '');
+    if (initial !== 'editorial' && initial !== 'collaborators') initial = 'editorial';
+    showView(initial);
+  }
+
   /* ---------- Init ---------- */
 
   function init() {
@@ -1058,6 +1097,7 @@
     bindChangeWorkspace();
     bindLogout();
     bindNotifications();
+    bindNavbar();
   }
 
   if (document.readyState === 'loading') {

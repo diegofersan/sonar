@@ -3,6 +3,7 @@
  * Dashboard — workspace selector & main dashboard view.
  */
 
+require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/session.php';
 require_once __DIR__ . '/includes/security.php';
 
@@ -23,6 +24,9 @@ $userInitial = strtoupper(mb_substr($userName, 0, 1));
 // Check if current user is Diego Ferreira (admin features)
 $rawName = $user['username'] ?? $user['name'] ?? '';
 $isAdmin = stripos($rawName, 'diego ferreira') !== false || stripos($rawName, 'diego') !== false;
+
+// F01 — department-head gate for the Colaboradores view
+$isDepartmentHead = is_department_head();
 
 // Must have workspace selected
 if (empty($_SESSION['clickup_workspace'])) {
@@ -77,12 +81,21 @@ if (empty($_SESSION['clickup_workspace'])) {
         </div>
     </header>
 
+    <!-- Navbar -->
+    <nav class="app-navbar" aria-label="Vistas">
+        <a href="#editorial" class="nav-link active" data-nav="editorial">Linha Editorial</a>
+        <?php if ($isDepartmentHead): ?>
+        <a href="#collaborators" class="nav-link" data-nav="collaborators">Colaboradores</a>
+        <?php endif; ?>
+    </nav>
+
     <!-- Main -->
     <main class="main-content">
+        <section class="view" data-view="editorial">
             <!-- Toolbar -->
             <div class="toolbar">
                 <div class="toolbar-left">
-                    <h2>Minhas Tarefas</h2>
+                    <h2>Linha Editorial</h2>
                     <span id="task-count" class="badge"></span>
                 </div>
                 <div class="toolbar-right">
@@ -153,6 +166,13 @@ if (empty($_SESSION['clickup_workspace'])) {
                 </div>
                 <div id="calendar-grid" class="calendar-grid"></div>
             </div>
+        </section>
+
+        <?php if ($isDepartmentHead): ?>
+        <section class="view" data-view="collaborators" style="display:none;">
+            <!-- F01 — Colaboradores view (preenchida na Tarefa 9) -->
+        </section>
+        <?php endif; ?>
     </main>
 
     <script src="/assets/js/app.js"></script>
