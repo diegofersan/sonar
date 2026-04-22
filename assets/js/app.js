@@ -576,6 +576,8 @@
 
         // Render calendar when switching to it
         if (target === 'calendar') renderCalendar();
+        // Load report when switching to it
+        if (target === 'report') fetchReport();
       });
     });
   }
@@ -866,6 +868,166 @@
     // Fetch unread count on load and every 60s
     fetchUnreadCount();
     _notifPollTimer = setInterval(fetchUnreadCount, 60000);
+  }
+
+  /* ---------- Report ---------- */
+
+  var _reportData = { tasks: [], linhas: [] };
+  var _reportSelectedLinhas = {};
+  var _reportLoaded = false;
+
+  async function fetchReport() {
+    if (_reportLoaded) return;
+    var filtersEl = document.getElementById('report-le-filters');
+    var listEl = document.getElementById('report-list');
+    if (!filtersEl || !listEl) return;
+
+    filtersEl.innerHTML = '<span class="text-secondary">A carregar...</span>';
+    listEl.innerHTML = '<div class="loading-container"><span class="loading-spinner"></span><span>A carregar relatório...</span></div>';
+
+    try {
+      var data = await apiFetch('/api/report.php');
+      _reportData.tasks = data.tasks || [];
+      _reportData.linhas = data.linhas_editoriais || [];
+      _reportLoaded = true;
+
+      renderReportFilters();
+      // Select all by default
+      _reportData.linhas.forEach(function(le) { _reportSelectedLinhas[le] = true; });
+      renderReportTasks();
+    } catch (err) {
+      filtersEl.innerHTML = '';
+      listEl.innerHTML = '<div class="error-message">Erro ao carregar relatório. ' + escapeHtml(err.message) + '</div>';
+    }
+  }
+
+  function renderReportFilters() {
+    var filtersEl = document.getElementById('report-le-filters');
+    if (!filtersEl) return;
+
+    if (_reportData.linhas.length === 0) {
+      filtersEl.innerHTML = '<span class="text-secondary">Nenhuma linha editorial encontrada.</span>';
+      return;
+    }
+
+    var selectAllChecked = _reportData.linhas.every(function(le) { return _reportSelectedLinhas[le]; });
+
+    var html = '<label class="report-le-chip">' +
+      '<input type="checkbox" ' + (selectAllChecked ? 'checked' : '') + ' data-le-all="true"> Todas' +
+      '</label>';
+
+    html += _reportData.linhas.map(function(le) {
+      var checked = _reportSelectedLinhas[le] ? 'checked' : '';
+      return '<label class="report-le-chip">' +
+        '<input type="checkbox" ' + checked + ' data-le="' + escapeHtml(le) + '"> ' +
+        escapeHtml(le.replace(/linha editorial\s*/i, '').trim() || le) +
+        '</label>';
+    }).join('');
+
+    filtersEl.innerHTML = html;
+
+    // Bind filter events
+    filtersEl.querySelectorAll('input[data-le]').forEach(function(cb) {
+      cb.addEventListener('change', function() {
+        _reportSelectedLinhas[cb.getAttribute('data-le')] = cb.checked;
+        renderReportFilters();
+        renderReportTasks();
+      });
+    });
+
+    var allCb = filtersEl.querySelector('input[data-le-all]');
+    if (allCb) {
+      allCb.addEventListener('change', function() {
+        _reportData.linhas.forEach(function(le) {
+          _reportSelectedLinhas[le] = allCb.checked;
+        });
+        renderReportFilters();
+        renderReportTasks();
+      });
+    }
+  }
+
+  function renderReportTasks() {
+    var listEl = document.getElementById('report-list');
+    if (!listEl) return;
+
+    var filtered = _reportData.tasks.filter(function(t) {
+      return t.linha_editorial && _reportSelectedLinhas[t.linha_editorial];
+    });
+
+    if (filtered.length === 0) {
+      listEl.innerHTML = '<div class="empty-state"><h3>Sem posts em atraso</h3><p>Nenhum post em atraso para as linhas editoriais selecionadas.</p></div>';
+      return;
+    }
+
+    // Group by linha editorial
+    var groups = {};
+    filtered.forEach(function(t) {
+      var le = t.linha_editorial;
+      if (!groups[le]) groups[le] = [];
+      groups[le].push(t);
+    });
+
+    var html = '';
+    var sortedKeys = Object.keys(groups).sort();
+
+    sortedKeys.forEach(function(le) {
+      var tasks = groups[le];
+      var leName = le.replace(/linha editorial\s*/i, '').trim() || le;
+
+      html += '<div class="report-group">';
+      html += '<div class="report-group-header">' +
+        '<span class="report-group-name">' + escapeHtml(leName) + '</span>' +
+        '<span class="report-group-count">' + tasks.length + ' post' + (tasks.length !== 1 ? 's' : '') + ' em atraso</span>' +
+        '</div>';
+
+      html += '<div class="report-group-tasks">';
+      tasks.forEach(function(task) {
+        var assigneeHtml = '';
+        if (task.all_assignees && task.all_assignees.length > 0) {
+          assigneeHtml = '<div class="report-assignees">' +
+            task.all_assignees.map(function(a) {
+              var name = a.username || a.name || 'Unknown';
+              var avatar = a.profilePicture || a.avatar || null;
+              if (avatar) {
+                return '<span class="report-assignee" title="' + escapeHtml(name) + '">' +
+                  '<img class="report-assignee-avatar" src="' + escapeHtml(avatar) + '" alt="' + escapeHtml(name) + '">' +
+                  '<span>' + escapeHtml(name) + '</span></span>';
+              }
+              return '<span class="report-assignee" title="' + escapeHtml(name) + '">' +
+                '<span class="report-assignee-initial">' + escapeHtml(name.charAt(0).toUpperCase()) + '</span>' +
+                '<span>' + escapeHtml(name) + '</span></span>';
+            }).join('') +
+            '</div>';
+        }
+
+        var daysText = task.days_overdue === 1 ? '1 dia' : task.days_overdue + ' dias';
+
+        var clickupLink = task.post_url || task.url
+          ? '<a href="' + escapeHtml(task.post_url || task.url) + '" target="_blank" class="report-clickup-link" title="Abrir no ClickUp">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">' +
+              '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>' +
+              '<polyline points="15 3 21 3 21 9"/>' +
+              '<line x1="10" y1="14" x2="21" y2="3"/>' +
+            '</svg></a>'
+          : '';
+
+        html += '<div class="report-task-row">' +
+          '<div class="report-task-info">' +
+            '<span class="report-task-name">' + escapeHtml(task.post_name || task.name) + '</span>' +
+            clickupLink +
+          '</div>' +
+          '<div class="report-task-meta">' +
+            '<span class="report-overdue-badge">' + daysText + ' em atraso</span>' +
+            assigneeHtml +
+          '</div>' +
+        '</div>';
+      });
+
+      html += '</div></div>';
+    });
+
+    listEl.innerHTML = html;
   }
 
   /* ---------- Helpers ---------- */

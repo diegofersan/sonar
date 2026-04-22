@@ -20,6 +20,10 @@ $userName = htmlspecialchars($user['username'] ?? $user['name'] ?? 'User', ENT_Q
 $userAvatar = $user['profilePicture'] ?? $user['avatar'] ?? null;
 $userInitial = strtoupper(mb_substr($userName, 0, 1));
 
+// Check if current user is Diego Ferreira (admin features)
+$rawName = $user['username'] ?? $user['name'] ?? '';
+$isAdmin = stripos($rawName, 'diego ferreira') !== false || stripos($rawName, 'diego') !== false;
+
 // Must have workspace selected
 if (empty($_SESSION['clickup_workspace'])) {
     header('Location: /workspace.php');
@@ -106,6 +110,9 @@ if (empty($_SESSION['clickup_workspace'])) {
                 <button class="tab" data-tab="future">Futuro <span id="future-count" class="tab-count"></span></button>
                 <button class="tab" data-tab="cancelled">Canceladas <span id="cancelled-count" class="tab-count"></span></button>
                 <button class="tab" data-tab="calendar">Calendario</button>
+                <?php if ($isAdmin): ?>
+                <button class="tab" data-tab="report">Relatório</button>
+                <?php endif; ?>
             </div>
 
             <!-- Tasks -->
@@ -118,6 +125,24 @@ if (empty($_SESSION['clickup_workspace'])) {
             <div id="approval-list" data-tab-content="approval" style="display:none;"></div>
             <div id="future-list" data-tab-content="future" style="display:none;"></div>
             <div id="cancelled-list" data-tab-content="cancelled" style="display:none;"></div>
+
+            <!-- Report (admin only) -->
+            <?php if ($isAdmin): ?>
+            <div id="report-view" data-tab-content="report" style="display:none;">
+                <div class="report-filters">
+                    <label class="report-filter-label">Linhas Editoriais:</label>
+                    <div id="report-le-filters" class="report-le-filters">
+                        <span class="text-secondary">A carregar...</span>
+                    </div>
+                </div>
+                <div id="report-list" class="report-list">
+                    <div class="empty-state">
+                        <h3>Seleciona uma linha editorial</h3>
+                        <p>Escolhe as linhas editoriais para ver os posts em atraso de todos os utilizadores.</p>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <!-- Calendar -->
             <div id="calendar-view" data-tab-content="calendar" style="display:none;">

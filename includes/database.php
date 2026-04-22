@@ -421,6 +421,28 @@ function db_get_user_tasks(string $workspace_id, $user_id, ?string $list_id = nu
 }
 
 /**
+ * Return all tasks in a workspace (no user filter).
+ *
+ * @param string $workspace_id Workspace / team ID.
+ * @return array               Array of task rows.
+ */
+function db_get_workspace_tasks(string $workspace_id): array
+{
+    $stmt = db()->prepare(<<<'SQL'
+        SELECT t.*
+        FROM tasks t
+        WHERE t.workspace_id = :workspace_id
+        ORDER BY
+            CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END,
+            t.due_date ASC
+    SQL);
+
+    $stmt->execute([':workspace_id' => $workspace_id]);
+
+    return $stmt->fetchAll();
+}
+
+/**
  * Fetch a single task by its ClickUp ID.
  *
  * @param string $task_id ClickUp task ID.
