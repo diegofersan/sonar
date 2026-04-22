@@ -60,7 +60,10 @@ if (!is_file($dbPath)) {
     exit(2);
 }
 
-$pdo = new PDO('sqlite:' . $dbPath . '?mode=ro');
+// SELECT-only. PDO SQLite não aceita `?mode=ro` sem prefixo `file:` (o `?`
+// passa a fazer parte do filename e o driver cria um ficheiro novo). Ficamos
+// em modo de escrita — sem writes, sem risco.
+$pdo = new PDO('sqlite:' . $dbPath);
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
