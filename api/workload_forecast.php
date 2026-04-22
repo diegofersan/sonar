@@ -94,7 +94,7 @@ try {
     $placeholders = implode(',', array_fill(0, count($memberIds), '?'));
     $sql = "
         SELECT t.id, t.name, t.status_name, t.start_date, t.due_date,
-               t.parent_id, ta.user_id
+               t.parent_id, t.url, ta.user_id
           FROM tasks t
           JOIN task_assignees ta ON ta.task_id = t.id
          WHERE t.workspace_id = ?
@@ -112,6 +112,7 @@ try {
             'id'          => (string) $r['id'],
             'name'        => $r['name'],
             'status_name' => $r['status_name'],
+            'url'         => $r['url'] ?? null,
             'start_date'  => $r['start_date'] !== null ? (int) $r['start_date'] : null,
             'due_date'    => $r['due_date']   !== null ? (int) $r['due_date']   : null,
             'parent_id'   => $r['parent_id'] !== null && $r['parent_id'] !== ''
@@ -125,6 +126,7 @@ try {
         $m           = $membersById[$memberId] ?? ['id' => $memberId];
         $tasks       = $byUser[$memberId] ?? [];
         $dailyTarget = get_daily_tasks_target($memberId);
+        $agg         = forecast_aggregate($tasks, $dailyTarget, $weekdays, $now, $tz);
 
         $collaborators[] = [
             'user' => [
@@ -135,8 +137,9 @@ try {
                 'color'          => $m['color']          ?? null,
                 'profilePicture' => $m['profilePicture'] ?? null,
             ],
-            'daily_target' => $dailyTarget,
-            'days'         => forecast_aggregate($tasks, $dailyTarget, $weekdays, $now, $tz),
+            'daily_target'  => $dailyTarget,
+            'days'          => $agg['days'],
+            'undated_tasks' => $agg['undated_tasks'],
         ];
     }
 

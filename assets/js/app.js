@@ -1276,11 +1276,15 @@
     }
   }
 
+  // Cached full payload so the modal can lookup tasks without a round trip.
+  var _forecastData = null;
+
   function renderForecast(data) {
     var listEl = document.getElementById('forecast-list');
     var labelEl = document.getElementById('forecast-week-label');
     if (!listEl) return;
 
+    _forecastData = data;
     if (labelEl) labelEl.textContent = formatWeekLabel(data.week_start, data.week_end);
 
     var collabs = data.collaborators || [];
@@ -1294,16 +1298,18 @@
     }
 
     var html = '';
-    collabs.forEach(function (c) {
-      html += renderForecastCard(c);
+    collabs.forEach(function (c, idx) {
+      html += renderForecastCard(c, idx);
     });
     listEl.innerHTML = html;
+    bindForecastClicks();
   }
 
-  function renderForecastCard(c) {
+  function renderForecastCard(c, idx) {
     var user = c.user || {};
     var displayName = user.username || user.email || user.id || '—';
     var target = Number(c.daily_target) || 0;
+    var undatedCount = (c.undated_tasks || []).length;
 
     var avatar;
     if (user.profilePicture) {
@@ -1314,6 +1320,15 @@
       avatar = '<span class="user-avatar-placeholder"' + bg + '>' + escapeHtml(initials) + '</span>';
     }
 
+    var undatedBadge = '';
+    if (undatedCount > 0) {
+      undatedBadge = '<button type="button" class="forecast-undated-badge" ' +
+        'data-forecast-undated="' + idx + '" ' +
+        'title="Ver tasks sem data">' +
+        '📄 ' + undatedCount + ' sem data' +
+        '</button>';
+    }
+
     var head =
       '<header class="collab-header">' +
       avatar +
@@ -1321,33 +1336,34 @@
       '<h3 class="collab-name">' + escapeHtml(displayName) + '</h3>' +
       '<span class="collab-weekly">' + target + ' tasks / dia</span>' +
       '</div>' +
+      undatedBadge +
       '</header>';
 
     var cells = '';
-    (c.days || []).forEach(function (d) {
+    (c.days || []).forEach(function (d, dayIdx) {
       var status = d.status || 'under';
-      var count = Number(d.active_count) || 0;
+      var active = Number(d.active_count) || 0;
       var overdue = Number(d.overdue_count) || 0;
-      var undated = Number(d.undated_count) || 0;
       var dayLabel = WEEKDAY_PT[d.weekday] || (d.weekday || '—');
       var dateSuffix = d.date ? d.date.substring(8, 10) + '/' + d.date.substring(5, 7) : '';
+      var hasTasks = (d.tasks || []).length > 0;
 
       var extras = '';
       if (overdue > 0) {
-        extras += '<span class="forecast-overdue" title="Overdue">⚠ ' + overdue + ' overdue</span>';
-      }
-      if (undated > 0) {
-        extras += '<span class="forecast-undated" title="Sem data">+' + undated + ' sem data</span>';
+        extras += '<span class="forecast-overdue" title="Overdue (empilhadas em hoje)">⚠ ' +
+          overdue + ' overdue</span>';
       }
 
       cells +=
-        '<div class="forecast-day status-' + escapeHtml(status) + '">' +
+        '<button type="button" class="forecast-day status-' + escapeHtml(status) + '"' +
+        (hasTasks ? ' data-forecast-day="' + idx + ':' + dayIdx + '"' : ' disabled') +
+        '>' +
         '<div class="forecast-day-header">' +
         '<span class="forecast-day-label">' + escapeHtml(dayLabel) + '</span>' +
         '<span class="forecast-day-date">' + escapeHtml(dateSuffix) + '</span>' +
         '</div>' +
         '<div class="forecast-day-count">' +
-        '<span class="forecast-count">' + count + '</span>' +
+        '<span class="forecast-count">' + active + '</span>' +
         '<span class="forecast-target">/ ' + target + '</span>' +
         '</div>' +
         '<div class="forecast-day-footer">' +
@@ -1356,12 +1372,104 @@
         '</span>' +
         extras +
         '</div>' +
-        '</div>';
+        '</button>';
     });
 
     return '<article class="collab-card forecast-card">' + head +
       '<div class="forecast-grid">' + cells + '</div>' +
       '</article>';
+  }
+
+  function bindForecastClicks() {
+    document.querySelectorAll('[data-forecast-day]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var parts = el.getAttribute('data-forecast-day').split(':');
+        openForecastModal(Number(parts[0]), Number(parts[1]));
+      });
+    });
+    document.querySelectorAll('[data-forecast-undated]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var idx = Number(el.getAttribute('data-forecast-undated'));
+        openForecastModal(idx, -1);
+      });
+    });
+  }
+
+  function openForecastModal(collabIdx, dayIdx) {
+    if (!_forecastData) return;
+    var c = (_forecastData.collaborators || [])[collabIdx];
+    if (!c) return;
+
+    var title, tasks;
+    if (dayIdx === -1) {
+      title = (c.user && c.user.username ? c.user.username : 'Colaborador') + ' — sem data';
+      tasks = c.undated_tasks || [];
+    } else {
+      var day = (c.days || [])[dayIdx];
+      if (!day) return;
+      var dayLabel = WEEKDAY_PT[day.weekday] || day.weekday || '';
+      var dateSuffix = day.date ? day.date.substring(8, 10) + '/' + day.date.substring(5, 7) : '';
+      title = (c.user && c.user.username ? c.user.username : 'Colaborador') +
+        ' — ' + dayLabel + ' ' + dateSuffix;
+      tasks = day.tasks || [];
+    }
+
+    var rows = tasks.length
+      ? tasks.map(renderForecastModalRow).join('')
+      : '<div class="empty-state"><p>Sem tasks.</p></div>';
+
+    var count = tasks.length;
+    var header =
+      '<div class="forecast-modal-header">' +
+      '<h3>' + escapeHtml(title) + '</h3>' +
+      '<span class="forecast-modal-count">' + count + ' task' + (count === 1 ? '' : 's') + '</span>' +
+      '<button type="button" class="forecast-modal-close" aria-label="Fechar">&times;</button>' +
+      '</div>';
+
+    var backdrop = document.createElement('div');
+    backdrop.className = 'forecast-modal-backdrop';
+    backdrop.innerHTML =
+      '<div class="forecast-modal" role="dialog" aria-modal="true">' +
+      header +
+      '<div class="forecast-modal-body">' + rows + '</div>' +
+      '</div>';
+
+    function close() {
+      document.removeEventListener('keydown', onKey);
+      if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+    }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+
+    backdrop.addEventListener('click', function (e) {
+      if (e.target === backdrop) close();
+    });
+    backdrop.querySelector('.forecast-modal-close').addEventListener('click', close);
+    document.addEventListener('keydown', onKey);
+
+    document.body.appendChild(backdrop);
+  }
+
+  function renderForecastModalRow(t) {
+    var name = t.name || '(sem nome)';
+    var status = t.status_name || '—';
+    var url = t.url || '';
+    var isOverdue = t.is_overdue === true;
+
+    var titleCell = url
+      ? '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(name) + '</a>'
+      : escapeHtml(name);
+
+    var overdueTag = isOverdue
+      ? '<span class="forecast-modal-overdue">⚠ overdue</span>'
+      : '';
+
+    return '<div class="forecast-modal-row">' +
+      '<div class="forecast-modal-title">' + titleCell + '</div>' +
+      '<div class="forecast-modal-meta">' +
+      '<span class="forecast-modal-status">' + escapeHtml(status) + '</span>' +
+      overdueTag +
+      '</div>' +
+      '</div>';
   }
 
   /* ---------- View router (F01) ---------- */

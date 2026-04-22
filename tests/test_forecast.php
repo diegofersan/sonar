@@ -192,10 +192,12 @@ $tasks = [
 ];
 $agg = forecast_aggregate($tasks, 5, $weekdays, $now, $tz);
 check('parent skipped when children in input — Mon count = 1 (only child)',
-    $agg[0]['active_count'] === 1,
-    'got ' . $agg[0]['active_count']);
+    $agg['days'][0]['active_count'] === 1,
+    'got ' . $agg['days'][0]['active_count']);
+check('parent-skip: task list contains only child',
+    count($agg['days'][0]['tasks']) === 1 && $agg['days'][0]['tasks'][0]['id'] === 'C1');
 
-// 5b. undated_count increments on today
+// 5b. undated tasks bubble up to collaborator level (not per-day)
 $tasks = [
     ['id' => 'X1', 'parent_id' => null, 'status_name' => 'in progress',
      'start_date' => null, 'due_date' => null],
@@ -203,32 +205,57 @@ $tasks = [
      'start_date' => null, 'due_date' => null],
 ];
 $agg = forecast_aggregate($tasks, 5, $weekdays, $now, $tz);
-// Mon 2026-04-20 is index 0 (today)
-check('undated_count bumps today',
-    $agg[0]['undated_count'] === 2 && $agg[0]['active_count'] === 0,
-    'got undated=' . $agg[0]['undated_count'] . ' active=' . $agg[0]['active_count']);
+check('undated_tasks at collab level (2 tasks)',
+    count($agg['undated_tasks']) === 2,
+    'got ' . count($agg['undated_tasks']));
+check('undated does not pollute any day bucket',
+    $agg['days'][0]['active_count'] === 0
+    && $agg['days'][2]['active_count'] === 0
+    && count($agg['days'][0]['tasks']) === 0);
 
-// 5c. overdue_count increments
+// 5c. overdue → today, ONLY in overdue_count (not active_count)
 $tasks = [
     ['id' => 'O1', 'parent_id' => null, 'status_name' => 'in progress',
      'start_date' => ms('2026-04-10', $tz), 'due_date' => ms('2026-04-15', $tz)], // past
 ];
 $agg = forecast_aggregate($tasks, 5, $weekdays, $now, $tz);
 // Mon = today = index 0
-check('overdue pushes to today w/ overdue_count=1',
-    $agg[0]['active_count'] === 1 && $agg[0]['overdue_count'] === 1,
-    'got active=' . $agg[0]['active_count'] . ' overdue=' . $agg[0]['overdue_count']);
+check('overdue: active_count=0, overdue_count=1 (no double-count)',
+    $agg['days'][0]['active_count'] === 0 && $agg['days'][0]['overdue_count'] === 1,
+    'got active=' . $agg['days'][0]['active_count'] . ' overdue=' . $agg['days'][0]['overdue_count']);
+check('overdue task flagged with is_overdue=true in bucket',
+    count($agg['days'][0]['tasks']) === 1 && $agg['days'][0]['tasks'][0]['is_overdue'] === true);
 
-// 5d. thresholds under/ok/over in aggregate
+// 5d. status computed on active+overdue combined
+$tasks = [
+    // 0 planned + 6 overdue → over (6/5 = 120%)
+    ['id' => 'O1', 'parent_id' => null, 'status_name' => 'in progress',
+     'start_date' => null, 'due_date' => ms('2026-04-15', $tz)],
+    ['id' => 'O2', 'parent_id' => null, 'status_name' => 'in progress',
+     'start_date' => null, 'due_date' => ms('2026-04-15', $tz)],
+    ['id' => 'O3', 'parent_id' => null, 'status_name' => 'in progress',
+     'start_date' => null, 'due_date' => ms('2026-04-15', $tz)],
+    ['id' => 'O4', 'parent_id' => null, 'status_name' => 'in progress',
+     'start_date' => null, 'due_date' => ms('2026-04-15', $tz)],
+    ['id' => 'O5', 'parent_id' => null, 'status_name' => 'in progress',
+     'start_date' => null, 'due_date' => ms('2026-04-15', $tz)],
+    ['id' => 'O6', 'parent_id' => null, 'status_name' => 'in progress',
+     'start_date' => null, 'due_date' => ms('2026-04-15', $tz)],
+];
+$agg = forecast_aggregate($tasks, 5, $weekdays, $now, $tz);
+check('6 overdue (active=0+overdue=6) vs target=5 → over',
+    $agg['days'][0]['status'] === 'over' && $agg['days'][0]['active_count'] === 0 && $agg['days'][0]['overdue_count'] === 6,
+    'got status=' . $agg['days'][0]['status'] . ' active=' . $agg['days'][0]['active_count'] . ' overdue=' . $agg['days'][0]['overdue_count']);
+
 $tasks = [];
 for ($i = 0; $i < 6; $i++) {
     $tasks[] = ['id' => "T$i", 'parent_id' => null, 'status_name' => 'in progress',
         'start_date' => ms('2026-04-20', $tz), 'due_date' => ms('2026-04-20', $tz)];
 }
 $agg = forecast_aggregate($tasks, 5, $weekdays, $now, $tz);
-check('6 tasks on Mon with target=5 → over',
-    $agg[0]['active_count'] === 6 && $agg[0]['status'] === 'over',
-    'got count=' . $agg[0]['active_count'] . ' status=' . $agg[0]['status']);
+check('6 planned on Mon with target=5 → over',
+    $agg['days'][0]['active_count'] === 6 && $agg['days'][0]['status'] === 'over',
+    'got count=' . $agg['days'][0]['active_count'] . ' status=' . $agg['days'][0]['status']);
 
 $tasks = [
     ['id' => 'A', 'parent_id' => null, 'status_name' => 'in progress',
@@ -238,8 +265,8 @@ $tasks = [
 ];
 $agg = forecast_aggregate($tasks, 5, $weekdays, $now, $tz);
 check('2 tasks on Mon with target=5 → under',
-    $agg[0]['status'] === 'under',
-    'got ' . $agg[0]['status']);
+    $agg['days'][0]['status'] === 'under',
+    'got ' . $agg['days'][0]['status']);
 
 // 5e. daily_target = 0 degenerates → any task = over
 $tasks = [
@@ -248,8 +275,8 @@ $tasks = [
 ];
 $agg = forecast_aggregate($tasks, 0, $weekdays, $now, $tz);
 check('target=0 + 1 task → over',
-    $agg[0]['status'] === 'over',
-    'got ' . $agg[0]['status']);
+    $agg['days'][0]['status'] === 'over',
+    'got ' . $agg['days'][0]['status']);
 
 // 5f. terminal task ignored
 $tasks = [
@@ -258,16 +285,30 @@ $tasks = [
 ];
 $agg = forecast_aggregate($tasks, 5, $weekdays, $now, $tz);
 check('terminal task never counted',
-    $agg[0]['active_count'] === 0 && $agg[1]['active_count'] === 0 && $agg[2]['active_count'] === 0,
-    'got counts=' . $agg[0]['active_count'] . ',' . $agg[1]['active_count'] . ',' . $agg[2]['active_count']);
+    $agg['days'][0]['active_count'] === 0 && $agg['days'][1]['active_count'] === 0 && $agg['days'][2]['active_count'] === 0,
+    'got counts=' . $agg['days'][0]['active_count'] . ',' . $agg['days'][1]['active_count'] . ',' . $agg['days'][2]['active_count']);
 
 // 5g. weekday labels
 check('weekday labels mon..fri',
-    $agg[0]['weekday'] === 'mon'
-    && $agg[1]['weekday'] === 'tue'
-    && $agg[2]['weekday'] === 'wed'
-    && $agg[3]['weekday'] === 'thu'
-    && $agg[4]['weekday'] === 'fri');
+    $agg['days'][0]['weekday'] === 'mon'
+    && $agg['days'][1]['weekday'] === 'tue'
+    && $agg['days'][2]['weekday'] === 'wed'
+    && $agg['days'][3]['weekday'] === 'thu'
+    && $agg['days'][4]['weekday'] === 'fri');
+
+// 5h. task list spans multiple days for start→due range
+$tasks = [
+    ['id' => 'SPAN', 'parent_id' => null, 'status_name' => 'in progress',
+     'start_date' => ms('2026-04-20', $tz), 'due_date' => ms('2026-04-22', $tz),
+     'name' => 'spans 3 days'],
+];
+$agg = forecast_aggregate($tasks, 5, $weekdays, $now, $tz);
+check('spanning task appears in each day of its range',
+    count($agg['days'][0]['tasks']) === 1
+    && count($agg['days'][1]['tasks']) === 1
+    && count($agg['days'][2]['tasks']) === 1
+    && $agg['days'][0]['tasks'][0]['id'] === 'SPAN'
+    && $agg['days'][0]['tasks'][0]['is_overdue'] === false);
 
 echo "\nPassed: $pass\nFailed: $fail\n";
 exit($fail === 0 ? 0 : 1);

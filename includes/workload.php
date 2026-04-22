@@ -200,13 +200,29 @@ function forecast_status(int $count, int $target): string
  * Regra D5: se uma task tem um `id` que aparece como `parent_id` de outra task
  * no mesmo input, a parent é skipada — só as folhas contam.
  *
- * Tasks sem nenhuma data (`start_date` e `due_date` ambos null) não entram
- * em `active_count`; em vez disso incrementam `undated_count` na coluna de
- * hoje (se hoje estiver dentro da janela). Dá visibilidade sem inflacionar
- * contagens.
+ * Separação overdue vs planeado (iteração UX pós-F02):
+ *  - `active_count` — tasks planeadas para o dia (cobertura start→due que inclui
+ *    o dia). Não conta overdue.
+ *  - `overdue_count` — tasks com due no passado não terminais, empilhadas **em
+ *    hoje**. Disjunto de active_count.
+ *  - Status é calculado sobre `active_count + overdue_count` (a carga efectiva
+ *    do dia), mas o nº grande na UI mostra só `active_count` para não deixar
+ *    overdue históricas dominarem a leitura.
  *
- * Output: array de N buckets (um por weekday em `$weekdays`), cada um com
- * `{date, weekday, active_count, target, overdue_count, undated_count, status}`.
+ * Tasks sem data (`start_date` e `due_date` ambos null) passam ao `undated_tasks`
+ * do colaborador (nível superior), não a uma coluna específica.
+ *
+ * Output:
+ * ```
+ * [
+ *   'days' => [
+ *     ['date', 'weekday', 'active_count', 'target', 'overdue_count', 'status',
+ *      'tasks' => [ {id, ..., is_overdue}, ... ]],
+ *     ...
+ *   ],
+ *   'undated_tasks' => [ {id, ...}, ... ],
+ * ]
+ * ```
  */
 function forecast_aggregate(
     array $tasks,
@@ -234,12 +250,14 @@ function forecast_aggregate(
             'active_count'  => 0,
             'target'        => $daily_target,
             'overdue_count' => 0,
-            'undated_count' => 0,
             'status'        => 'under',
+            'tasks'         => [],
         ];
     }
 
-    $nowDay  = $now->setTimezone($tz)->setTime(0, 0, 0);
+    $undatedTasks = [];
+
+    $nowDay   = $now->setTimezone($tz)->setTime(0, 0, 0);
     $todayKey = $nowDay->format('Y-m-d');
 
     foreach ($tasks as $t) {
@@ -257,11 +275,9 @@ function forecast_aggregate(
         $startMs = $t['start_date'] ?? null;
         $dueMs   = $t['due_date']   ?? null;
 
-        // Undated → incrementa coluna de hoje (se estiver na janela).
+        // Undated → sai para o nível do colaborador.
         if ($startMs === null && $dueMs === null) {
-            if (isset($byDate[$todayKey])) {
-                $byDate[$todayKey]['undated_count']++;
-            }
+            $undatedTasks[] = $t;
             continue;
         }
 
@@ -275,22 +291,34 @@ function forecast_aggregate(
 
         $days = forecast_task_days($t, $now, $tz);
         foreach ($days as $dateKey) {
-            if (isset($byDate[$dateKey])) {
-                $byDate[$dateKey]['active_count']++;
-                if ($overdue) {
-                    $byDate[$dateKey]['overdue_count']++;
-                }
+            if (!isset($byDate[$dateKey])) {
+                continue;
             }
+            $entry = $t;
+            $entry['is_overdue'] = $overdue;
+
+            if ($overdue) {
+                // Overdue-pushed-to-today: conta só em overdue_count, nunca em active_count.
+                $byDate[$dateKey]['overdue_count']++;
+            } else {
+                $byDate[$dateKey]['active_count']++;
+            }
+            $byDate[$dateKey]['tasks'][] = $entry;
         }
     }
 
-    // Aplica status final.
-    $out = [];
+    // Aplica status final sobre carga total (planeado + overdue).
+    $outDays = [];
     foreach ($weekdays as $wd) {
         $key = $wd->format('Y-m-d');
         $b = $byDate[$key];
-        $b['status'] = forecast_status((int) $b['active_count'], (int) $daily_target);
-        $out[] = $b;
+        $total = (int) $b['active_count'] + (int) $b['overdue_count'];
+        $b['status'] = forecast_status($total, (int) $daily_target);
+        $outDays[] = $b;
     }
-    return $out;
+
+    return [
+        'days'          => $outDays,
+        'undated_tasks' => $undatedTasks,
+    ];
 }

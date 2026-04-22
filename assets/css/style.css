@@ -1583,6 +1583,20 @@ a {
   flex-direction: column;
   gap: 0.5rem;
   min-height: 6.5rem;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+
+.forecast-day:hover:not(:disabled) {
+  border-color: var(--color-text-secondary);
+}
+
+.forecast-day:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .forecast-day.status-over {
@@ -1649,8 +1663,132 @@ a {
   color: var(--color-text-secondary);
 }
 
+/* Undated badge no header do cartão (clicável) */
+.forecast-undated-badge {
+  margin-left: auto;
+  background: transparent;
+  border: 1px dashed var(--color-border);
+  color: var(--color-text-secondary);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1.2;
+}
+
+.forecast-undated-badge:hover {
+  border-style: solid;
+  border-color: var(--color-text-secondary);
+  color: var(--color-text);
+}
+
+/* Modal — tasks do dia / sem data */
+.forecast-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.forecast-modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  max-width: 640px;
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.forecast-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.forecast-modal-header h3 {
+  margin: 0;
+  flex: 1;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.forecast-modal-count {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.forecast-modal-close {
+  background: transparent;
+  border: 0;
+  color: var(--color-text-secondary);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+}
+
+.forecast-modal-close:hover {
+  color: var(--color-text);
+}
+
+.forecast-modal-body {
+  overflow-y: auto;
+  padding: 0.5rem 0;
+}
+
+.forecast-modal-row {
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.forecast-modal-row:last-child {
+  border-bottom: 0;
+}
+
+.forecast-modal-title a {
+  color: var(--color-text);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.forecast-modal-title a:hover {
+  text-decoration: underline;
+}
+
+.forecast-modal-meta {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.forecast-modal-overdue {
+  color: #f87171;
+  font-weight: 500;
+}
+
 @media (max-width: 720px) {
   .forecast-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .forecast-undated-badge {
+    margin-left: 0;
+    margin-top: 0.5rem;
+    flex-basis: 100%;
   }
 }

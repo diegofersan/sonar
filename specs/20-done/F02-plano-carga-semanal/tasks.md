@@ -150,7 +150,7 @@ vai com commit próprio por incluir revisão da spec + do próprio `tasks.md`.
 
 ## Fase F — Validação
 
-### [ ] 7. Validação manual + writeup
+### [x] 7. Validação manual + writeup
 
 - `specs/10-active/F02-plano-carga-semanal/validation.md`:
   - Checklist manual (local + produção) dos critérios de aceitação revistos.
