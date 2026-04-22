@@ -170,7 +170,24 @@ if (empty($_SESSION['clickup_workspace'])) {
 
         <?php if ($isDepartmentHead): ?>
         <section class="view" data-view="collaborators" style="display:none;">
-            <!-- F01 — Colaboradores view (preenchida na Tarefa 9) -->
+            <div class="toolbar">
+                <div class="toolbar-left">
+                    <h2>Colaboradores</h2>
+                    <span id="collab-month-label" class="text-secondary"></span>
+                </div>
+                <div class="toolbar-right">
+                    <span id="collab-last-sync" class="text-secondary"></span>
+                    <button id="btn-sync-time-entries" class="btn btn-primary btn-sm">
+                        <svg class="sync-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <polyline points="1 20 1 14 7 14"></polyline>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                        </svg>
+                        Sync
+                    </button>
+                </div>
+            </div>
+            <div id="collab-list"></div>
         </section>
         <?php endif; ?>
     </main>

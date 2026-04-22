@@ -1038,6 +1038,212 @@
     return div.innerHTML;
   }
 
+  /* ---------- Colaboradores (F01) ---------- */
+
+  var _collabLoaded = false;
+  var DAYS_PT = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+  var DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  var STATUS_LABEL = { under: 'Sub', ok: 'Ok', over: 'Sobre' };
+  var MONTH_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+                  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+  function formatHours(h) {
+    if (!h || h <= 0) return '—';
+    // Strip a trailing .0 so whole numbers read cleanly ("8h" not "8.0h").
+    var s = (Math.round(h * 10) / 10).toString();
+    if (s.indexOf('.') === -1) return s + 'h';
+    return s + 'h';
+  }
+
+  function formatLastSync(ts) {
+    if (!ts) return 'Ainda sem dados';
+    var then = Number(ts) * 1000;
+    var d = new Date(then);
+    var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return 'Última sync: ' + pad(d.getDate()) + '/' + pad(d.getMonth() + 1) +
+           ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  function formatMonthLabel(startISO) {
+    if (!startISO) return '';
+    // `month_start` is the Monday of the first ISO week overlapping the month.
+    // The calendar-month label is more useful — derive it from today.
+    var now = new Date();
+    return MONTH_PT[now.getMonth()] + ' ' + now.getFullYear();
+  }
+
+  async function fetchCollaborators() {
+    var listEl = document.getElementById('collab-list');
+    if (!listEl) return;
+
+    listEl.innerHTML =
+      '<div class="loading-container">' +
+      '<span class="loading-spinner"></span>' +
+      '<span>A carregar colaboradores...</span>' +
+      '</div>';
+
+    try {
+      var data = await apiFetch('/api/collaborators.php');
+      renderCollaborators(data);
+    } catch (err) {
+      listEl.innerHTML = '<div class="error-message">Erro: ' + escapeHtml(err.message) + '</div>';
+      Toast.error('Erro ao carregar colaboradores: ' + err.message);
+    }
+  }
+
+  function renderCollaborators(data) {
+    var listEl = document.getElementById('collab-list');
+    var lastSyncEl = document.getElementById('collab-last-sync');
+    var monthEl = document.getElementById('collab-month-label');
+    if (!listEl) return;
+
+    if (monthEl) monthEl.textContent = formatMonthLabel(data.month_start);
+    if (lastSyncEl) lastSyncEl.textContent = formatLastSync(data.last_sync);
+
+    if (!data.last_sync) {
+      listEl.innerHTML =
+        '<div class="empty-state">' +
+        '<h3>Ainda sem dados</h3>' +
+        '<p>Clica em <strong>Sync</strong> para importar os time entries do mês.</p>' +
+        '</div>';
+      return;
+    }
+
+    var collabs = data.collaborators || [];
+    if (!collabs.length) {
+      listEl.innerHTML =
+        '<div class="empty-state">' +
+        '<h3>Sem colaboradores no grupo Design</h3>' +
+        '<p>' + escapeHtml(data.warning || 'O grupo não tem membros.') + '</p>' +
+        '</div>';
+      return;
+    }
+
+    var html = '';
+    collabs.forEach(function (c) {
+      html += renderCollabCard(c);
+    });
+    listEl.innerHTML = html;
+  }
+
+  function renderCollabCard(c) {
+    var user = c.user || {};
+    var displayName = user.username || user.email || user.id || '—';
+    var weekly = Number(c.weekly_hours) || 0;
+
+    var avatar;
+    if (user.profilePicture) {
+      avatar = '<img class="user-avatar" src="' + escapeHtml(user.profilePicture) + '" alt="">';
+    } else {
+      var initials = user.initials || displayName.charAt(0).toUpperCase();
+      var bg = user.color ? ' style="background:' + escapeHtml(user.color) + '"' : '';
+      avatar = '<span class="user-avatar-placeholder"' + bg + '>' + escapeHtml(initials) + '</span>';
+    }
+
+    var head =
+      '<header class="collab-header">' +
+      avatar +
+      '<div class="collab-meta">' +
+      '<h3 class="collab-name">' + escapeHtml(displayName) + '</h3>' +
+      '<span class="collab-weekly">' + weekly + 'h / semana</span>' +
+      '</div>' +
+      '</header>';
+
+    // Week table: header row + one row per ISO week
+    var headRow = '<div class="collab-week-row collab-week-head">' +
+      '<div class="collab-week-label">Sem</div>';
+    DAYS_PT.forEach(function (d) { headRow += '<div class="collab-day">' + d + '</div>'; });
+    headRow += '<div class="collab-total">Total</div>' +
+      '<div class="collab-status-cell">Carga</div>' +
+      '</div>';
+
+    var rows = '';
+    (c.weeks || []).forEach(function (w) {
+      var row = '<div class="collab-week-row">' +
+        '<div class="collab-week-label" title="' + escapeHtml(w.week_start || '') + '">W' +
+        (w.week_number || '') + '</div>';
+      DAY_KEYS.forEach(function (k) {
+        var v = (w.days && typeof w.days[k] === 'number') ? w.days[k] : 0;
+        var cls = v > 0 ? 'collab-day has-val' : 'collab-day';
+        row += '<div class="' + cls + '">' + formatHours(v) + '</div>';
+      });
+      row += '<div class="collab-total">' + formatHours(w.total_hours) + '</div>' +
+        '<div class="collab-status-cell">' +
+        '<span class="collab-badge ' + escapeHtml(w.status || 'under') + '">' +
+        (STATUS_LABEL[w.status] || w.status || '—') +
+        '</span></div>' +
+        '</div>';
+      rows += row;
+    });
+
+    return '<article class="collab-card">' + head +
+      '<div class="collab-weeks">' + headRow + rows + '</div>' +
+      '</article>';
+  }
+
+  function bindTimeEntriesSync() {
+    var btn = document.getElementById('btn-sync-time-entries');
+    if (!btn) return;
+    btn.addEventListener('click', function () { startTimeEntriesSync(btn, false); });
+  }
+
+  async function startTimeEntriesSync(btn, force) {
+    btn.disabled = true;
+    btn.classList.add('syncing');
+    var originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="loading-spinner" style="width:16px;height:16px;border-width:2px;"></span> A sincronizar...';
+
+    try {
+      await apiFetch('/api/sync_time_entries.php', {
+        method: 'POST',
+        body: JSON.stringify(force ? { force: true } : {}),
+      });
+      Toast.show(force ? 'Sync forçado iniciado...' : 'Sync iniciado...');
+      await pollTimeEntriesSync(btn, originalText);
+    } catch (err) {
+      if (err.message && err.message.indexOf('already running') !== -1) {
+        btn.disabled = false;
+        btn.classList.remove('syncing');
+        btn.innerHTML = originalText;
+        // Simple confirm-based force path (no full force bar UI to keep this tight).
+        if (window.confirm('Já existe um sync a correr. Forçar novo sync?')) {
+          startTimeEntriesSync(btn, true);
+        }
+      } else {
+        Toast.error('Erro no sync: ' + err.message);
+        btn.disabled = false;
+        btn.classList.remove('syncing');
+        btn.innerHTML = originalText;
+      }
+    }
+  }
+
+  async function pollTimeEntriesSync(btn, originalText) {
+    var maxAttempts = 120; // ~4 min
+    for (var i = 0; i < maxAttempts; i++) {
+      await new Promise(function (r) { setTimeout(r, 2000); });
+      try {
+        var status = await apiFetch('/api/sync_time_entries.php');
+        if (!status.running) {
+          await fetchCollaborators();
+          Toast.success('Sync de colaboradores concluído');
+          btn.disabled = false;
+          btn.classList.remove('syncing');
+          btn.innerHTML = originalText;
+          return;
+        }
+        if (status.progress) {
+          btn.innerHTML = '<span class="loading-spinner" style="width:16px;height:16px;border-width:2px;"></span> ' +
+            escapeHtml(status.progress);
+        }
+      } catch (err) { /* keep polling */ }
+    }
+    Toast.error('Sync demorou demasiado. Verifica mais tarde.');
+    btn.disabled = false;
+    btn.classList.remove('syncing');
+    btn.innerHTML = originalText;
+  }
+
   /* ---------- View router (F01) ---------- */
 
   function showView(name) {
@@ -1060,6 +1266,11 @@
     document.querySelectorAll('.app-navbar .nav-link[data-nav]').forEach(function (a) {
       a.classList.toggle('active', a.getAttribute('data-nav') === name);
     });
+    // Lazy-load the collaborators view the first time it's shown.
+    if (name === 'collaborators' && !_collabLoaded) {
+      _collabLoaded = true;
+      fetchCollaborators();
+    }
   }
 
   function bindNavbar() {
@@ -1097,6 +1308,7 @@
     bindChangeWorkspace();
     bindLogout();
     bindNotifications();
+    bindTimeEntriesSync();
     bindNavbar();
   }
 

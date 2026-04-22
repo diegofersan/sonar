@@ -135,7 +135,7 @@ Em `includes/clickup.php`, adicionar os helpers necessários conforme o spike:
 
 ---
 
-### [ ] 9. Vista Colaboradores
+### [x] 9. Vista Colaboradores
 
 - `assets/js/app.js`:
   - No load da view "collaborators", GET `/api/collaborators.php` e render.
