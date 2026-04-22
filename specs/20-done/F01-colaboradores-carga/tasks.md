@@ -150,7 +150,7 @@ Em `includes/clickup.php`, adicionar os helpers necessários conforme o spike:
 
 ## Fase E — Validação
 
-### [ ] 10. Validação manual + writeup
+### [x] 10. Validação manual + writeup
 
 - Criar `specs/10-active/F01-colaboradores-carga/validation.md` com:
   - Checklist manual (local + produção) dos critérios de aceitação da spec.
