@@ -22,6 +22,7 @@ try {
     require_once __DIR__ . '/../includes/database.php';
     require_once __DIR__ . '/../includes/clickup.php';
     require_once __DIR__ . '/../includes/collaborators.php';
+    require_once __DIR__ . '/../includes/time_entries.php';
 
     init_session();
 
@@ -187,7 +188,26 @@ try {
         $entries = [];
     }
 
-    $inserted = db_upsert_time_entries($entries, $workspaceId);
+    // F03 — resolve post parent for Design/Copy subtasks before the upsert,
+    // so each row lands on disk with post_name/post_url filled in. Only
+    // candidates (name contains design|copy) trigger API calls; parent names
+    // are cached within this sync run so siblings share the same fetch.
+    $fetchTask = function (string $id) use ($token) {
+        $res = clickup_get_task($token, $id);
+        return (is_array($res) && !empty($res['ok']) && is_array($res['body']))
+            ? $res['body']
+            : null;
+    };
+    $parentMap = time_entries_resolve_parents(
+        $entries,
+        $fetchTask,
+        function (int $done, int $total) use ($logId) {
+            db_sync_progress($logId, "A resolver posts... ({$done}/{$total})");
+        }
+    );
+
+    db_sync_progress($logId, 'A gravar time entries...');
+    $inserted = db_upsert_time_entries($entries, $workspaceId, $parentMap);
 
     db_log_sync_end($logId, 'success', $inserted);
 

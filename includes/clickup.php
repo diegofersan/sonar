@@ -278,3 +278,12 @@ function clickup_get_time_entries(
 
     return clickup_api_get('/team/' . urlencode($team_id) . '/time_entries?' . $qs, $token);
 }
+
+/**
+ * GET /task/{id} — used by the time-entries sync to resolve Design/Copy
+ * subtasks up to their post parent. Read-only, no custom fields needed.
+ */
+function clickup_get_task(string $token, string $task_id): array
+{
+    return clickup_api_get('/task/' . urlencode($task_id), $token);
+}
