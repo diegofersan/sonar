@@ -185,3 +185,96 @@ function clickup_get_user(string $token): array
 {
     return clickup_api_get('/user', $token);
 }
+
+// ---------------------------------------------------------------------------
+// F01 — User groups + time entries
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch the user groups (v2 "teams" / chat groups) for a workspace.
+ *
+ * Endpoint: GET /group?team_id={id}
+ * Spike confirmed `/team/{id}/group` is 404; this is the correct form.
+ * Members come embedded in each group (no extra call needed).
+ */
+function clickup_get_groups(string $token, string $team_id): array
+{
+    return clickup_api_get('/group?team_id=' . urlencode($team_id), $token);
+}
+
+/**
+ * Pure helper: pick the first group whose name contains "design"
+ * (case-insensitive). Extracted for testability — no network.
+ */
+function _clickup_pick_design_group(array $groups): ?array
+{
+    foreach ($groups as $g) {
+        $name = $g['name'] ?? null;
+        if (is_string($name) && stripos($name, 'design') !== false) {
+            return $g;
+        }
+    }
+    return null;
+}
+
+/**
+ * Fetch the workspace's groups and return the one that matches "design"
+ * (or null if no match / if the HTTP call fails).
+ */
+function clickup_find_design_group(string $token, string $team_id): ?array
+{
+    $res = clickup_get_groups($token, $team_id);
+    if (empty($res['ok'])) return null;
+    $groups = $res['body']['groups'] ?? [];
+    if (!is_array($groups)) return null;
+    return _clickup_pick_design_group($groups);
+}
+
+/**
+ * Extract the member user_ids from a group payload.
+ * Shape varies: classic v2 uses `userid` (scalar or array); the Teams-Pulse
+ * payload we saw in the spike uses `members: [{id, …}]`.
+ */
+function clickup_group_member_ids(array $group): array
+{
+    $ids = [];
+    if (!empty($group['members']) && is_array($group['members'])) {
+        foreach ($group['members'] as $m) {
+            $id = $m['id'] ?? ($m['user']['id'] ?? null);
+            if ($id !== null) $ids[] = (string) $id;
+        }
+    } elseif (isset($group['userid'])) {
+        foreach ((array) $group['userid'] as $id) {
+            if ($id !== null && $id !== '') $ids[] = (string) $id;
+        }
+    }
+    return array_values(array_unique(array_filter($ids, fn($x) => $x !== '')));
+}
+
+/**
+ * Fetch time entries for a set of assignees inside a half-open millisecond
+ * window [start_ms, end_ms).
+ *
+ * Endpoint: GET /team/{team_id}/time_entries?start_date=…&end_date=…&assignee=csv
+ * Spike confirmed the `assignee` parameter accepts multiple IDs separated
+ * by commas, which saves calls.
+ */
+function clickup_get_time_entries(
+    string $token,
+    string $team_id,
+    int $start_ms,
+    int $end_ms,
+    array $assignee_ids
+): array {
+    $assignees = array_values(array_filter(
+        array_map('strval', $assignee_ids),
+        fn($x) => $x !== ''
+    ));
+
+    $qs = 'start_date=' . $start_ms . '&end_date=' . $end_ms;
+    if ($assignees) {
+        $qs .= '&assignee=' . implode(',', $assignees);
+    }
+
+    return clickup_api_get('/team/' . urlencode($team_id) . '/time_entries?' . $qs, $token);
+}

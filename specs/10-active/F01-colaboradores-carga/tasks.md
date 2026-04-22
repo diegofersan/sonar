@@ -79,7 +79,7 @@ Resumo:
 
 ---
 
-### [ ] 5. Cliente ClickUp: grupos, weekly_hours, time entries
+### [x] 5. Cliente ClickUp: grupos, weekly_hours, time entries
 
 Em `includes/clickup.php`, adicionar os helpers necessários conforme o spike:
 
