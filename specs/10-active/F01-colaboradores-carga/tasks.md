@@ -51,7 +51,7 @@ Resumo:
 
 ## Fase B — Infraestrutura (depende da Fase A)
 
-### [ ] 3. Schema: `time_entries` + `sync_log.scope`
+### [x] 3. Schema: `time_entries` + `sync_log.scope`
 
 - `includes/database.php`:
   - Adicionar `CREATE TABLE IF NOT EXISTS time_entries(...)` ao `db_migrate()` com o shape da spec (+ índice `(workspace_id, user_id, start_ms)`).

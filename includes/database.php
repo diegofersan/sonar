@@ -29,12 +29,16 @@ function db(): PDO
         return $pdo;
     }
 
-    $dataDir = __DIR__ . '/../data';
-    if (!is_dir($dataDir)) {
-        mkdir($dataDir, 0700, true);
+    // Test override: allow a test harness to redirect to a temp DB.
+    // Must be set in $GLOBALS['SONAR_DB_PATH'] before the first db() call.
+    $dbPath = $GLOBALS['SONAR_DB_PATH'] ?? null;
+    if ($dbPath === null) {
+        $dataDir = __DIR__ . '/../data';
+        if (!is_dir($dataDir)) {
+            mkdir($dataDir, 0700, true);
+        }
+        $dbPath = $dataDir . '/sonar.db';
     }
-
-    $dbPath = $dataDir . '/sonar.db';
     $pdo = new PDO('sqlite:' . $dbPath);
 
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -136,6 +140,19 @@ function db_migrate(): void
         CREATE INDEX IF NOT EXISTS idx_notifications_unseen
             ON task_notifications(workspace_id, seen, created_at DESC);
 
+        CREATE TABLE IF NOT EXISTS time_entries (
+            id            TEXT PRIMARY KEY,
+            user_id       TEXT NOT NULL,
+            task_id       TEXT,
+            workspace_id  TEXT NOT NULL,
+            start_ms      INTEGER NOT NULL,
+            duration_ms   INTEGER NOT NULL DEFAULT 0,
+            synced_at     INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_time_entries_lookup
+            ON time_entries(workspace_id, user_id, start_ms);
+
     SQL);
 
     // Add progress column if it doesn't exist
@@ -148,6 +165,13 @@ function db_migrate(): void
     // Add approval_rejected flag to tasks
     try {
         $pdo->exec('ALTER TABLE tasks ADD COLUMN approval_rejected INTEGER NOT NULL DEFAULT 0');
+    } catch (\Throwable $e) {
+        // Column already exists — ignore
+    }
+
+    // Add scope to sync_log so tasks vs time_entries syncs don't collide
+    try {
+        $pdo->exec("ALTER TABLE sync_log ADD COLUMN scope TEXT NOT NULL DEFAULT 'tasks'");
     } catch (\Throwable $e) {
         // Column already exists — ignore
     }
@@ -845,4 +869,95 @@ function db_cleanup_notifications(string $workspace_id): void
             'DELETE FROM task_notifications WHERE workspace_id = ? AND id <= ?'
         )->execute([$workspace_id, $cutoff['id']]);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Time entries (F01 — Colaboradores)
+// ---------------------------------------------------------------------------
+
+/**
+ * Batch-upsert ClickUp time entries inside a single transaction.
+ *
+ * Entries without a task are ignored on purpose (F01 spec).
+ *
+ * @param array  $entries      Raw ClickUp time_entry objects.
+ * @param string $workspace_id Workspace / team ID the entries belong to.
+ * @return int                 Number of rows actually inserted/replaced.
+ */
+function db_upsert_time_entries(array $entries, string $workspace_id): int
+{
+    $pdo = db();
+    $pdo->beginTransaction();
+    $count = 0;
+
+    try {
+        $stmt = $pdo->prepare(<<<'SQL'
+            INSERT OR REPLACE INTO time_entries
+                (id, user_id, task_id, workspace_id, start_ms, duration_ms, synced_at)
+            VALUES
+                (:id, :user_id, :task_id, :workspace_id, :start_ms, :duration_ms, :synced_at)
+        SQL);
+
+        $now = time();
+        foreach ($entries as $e) {
+            $id = (string) ($e['id'] ?? '');
+            if ($id === '') continue;
+
+            $taskId = $e['task']['id'] ?? ($e['task_id'] ?? null);
+            if ($taskId === null || $taskId === '') {
+                // Entry without task → ignore (F01 spec).
+                continue;
+            }
+
+            $userId = (string) ($e['user']['id'] ?? $e['assignee'] ?? '');
+            if ($userId === '') continue;
+
+            $stmt->execute([
+                ':id'           => $id,
+                ':user_id'      => $userId,
+                ':task_id'      => (string) $taskId,
+                ':workspace_id' => $workspace_id,
+                ':start_ms'     => (int) ($e['start'] ?? 0),
+                ':duration_ms'  => (int) ($e['duration'] ?? 0),
+                ':synced_at'    => $now,
+            ]);
+            $count++;
+        }
+        $pdo->commit();
+    } catch (\Throwable $ex) {
+        $pdo->rollBack();
+        throw $ex;
+    }
+
+    return $count;
+}
+
+/**
+ * Query time entries for a workspace, limited to a set of users and a
+ * half-open time window [start_ms, end_ms).
+ *
+ * @param string $workspace_id Workspace / team ID.
+ * @param array  $user_ids     List of user IDs (coerced to strings).
+ * @param int    $start_ms     Inclusive lower bound (ms epoch).
+ * @param int    $end_ms       Exclusive upper bound (ms epoch).
+ * @return array               Matching time_entries rows, ordered by start_ms.
+ */
+function db_get_time_entries(string $workspace_id, array $user_ids, int $start_ms, int $end_ms): array
+{
+    $user_ids = array_values(array_filter(array_map('strval', $user_ids), fn($x) => $x !== ''));
+    if (!$user_ids) return [];
+
+    $placeholders = implode(',', array_fill(0, count($user_ids), '?'));
+    $sql = "SELECT * FROM time_entries
+            WHERE workspace_id = ?
+              AND user_id IN ($placeholders)
+              AND start_ms >= ?
+              AND start_ms <  ?
+            ORDER BY start_ms ASC";
+
+    $params = array_merge([$workspace_id], $user_ids, [$start_ms, $end_ms]);
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+
+    return $stmt->fetchAll();
 }
