@@ -1213,7 +1213,7 @@
     var w = (c.weeks || [])[weekIdx];
     if (!w) return;
 
-    var tasks = (w.days_tasks && w.days_tasks[dayKey]) || [];
+    var tasks = (w.days_posts && w.days_posts[dayKey]) || [];
     var totalHours = (w.days && typeof w.days[dayKey] === 'number') ? w.days[dayKey] : 0;
 
     // Derive the concrete date for that day (week_start is the Monday).
@@ -1267,22 +1267,14 @@
   }
 
   function renderCollabDayRow(t) {
-    // time_entries reference any task in the workspace, but the local `tasks`
-    // cache only has this user's tasks — so most rows come back with
-    // task_name/task_url = null. Fallback: use the task_id as label and
-    // build a ClickUp URL from it (same format the cache stores).
+    // After F03 the aggregator groups by post (parent ?? task), so rows carry
+    // post_name/post_url directly. If name is missing (post outside cache
+    // and sync hasn't re-resolved yet) fall back to "Post {id}".
     var hours = typeof t.hours === 'number' ? t.hours : 0;
-    var name, url;
-    if (t.task_name) {
-      name = t.task_name;
-      url  = t.task_url || (t.task_id ? 'https://app.clickup.com/t/' + t.task_id : '');
-    } else if (t.task_id) {
-      name = 'Task ' + t.task_id;
-      url  = 'https://app.clickup.com/t/' + t.task_id;
-    } else {
-      name = '(entry sem task)';
-      url  = '';
-    }
+    var name  = t.post_name
+      ? t.post_name
+      : (t.post_id ? 'Post ' + t.post_id : '(entry sem post)');
+    var url   = t.post_url || (t.post_id ? 'https://app.clickup.com/t/' + t.post_id : '');
 
     var titleCell = url
       ? '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(name) + '</a>'

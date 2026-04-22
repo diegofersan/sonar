@@ -91,7 +91,7 @@ function collab_iso_weeks(DateTimeImmutable $start, DateTimeImmutable $end): arr
  * @return array<int, array{
  *   year:int, week_number:int, week_start:string,
  *   days: array<string,float>,
- *   days_tasks: array<string, list<array{task_id:?string, task_name:?string, task_url:?string, duration_ms:int, hours:float}>>,
+ *   days_posts: array<string, list<array{post_id:?string, post_name:?string, post_url:?string, duration_ms:int, hours:float}>>,
  *   total_hours:float, status:string
  * }>
  */
@@ -101,18 +101,22 @@ function collab_aggregate_weeks(
     array $weeks,
     DateTimeZone $tz
 ): array {
-    // Bucket: "YYYY-WW" → per-day totals in ms (1=Mon..7=Sun) plus per-task
-    // breakdown per weekday for the click-to-detail popup. Structure:
-    //   days   → [dow => total_ms]
-    //   tasks  → [dow => [task_id => ['task_id','task_name','task_url','duration_ms']]]
-    //            entries without task_id get grouped under the sentinel key '_no_task'.
+    // Bucket: "YYYY-WW" → per-day totals in ms (1=Mon..7=Sun) plus per-post
+    // breakdown per weekday for the click-to-detail popup. The grouping key
+    // is post_id (parent_task_id || task_id), so multiple subtasks of the
+    // same post (Design + Copy) collapse into a single row with summed
+    // duration — matching the Linha Editorial view's parent-bubble rule.
+    //
+    //   days  → [dow => total_ms]
+    //   posts → [dow => [post_id => ['post_id','post_name','post_url','duration_ms']]]
+    //           entries without task_id fall under sentinel '_no_task'.
     $buckets = [];
     foreach ($weeks as $w) {
         $key = sprintf('%04d-%02d', $w['year'], $w['week']);
         $buckets[$key] = [
             'meta'  => $w,
             'days'  => array_fill(1, 7, 0),
-            'tasks' => array_fill(1, 7, []),
+            'posts' => array_fill(1, 7, []),
         ];
     }
 
@@ -127,31 +131,42 @@ function collab_aggregate_weeks(
         $dow = (int) $dt->format('N');
         $buckets[$key]['days'][$dow] += $dur;
 
-        // Group multiple entries for the same task/day into one row (sum durations).
-        $taskId   = isset($e['task_id']) && $e['task_id'] !== '' ? (string) $e['task_id'] : '';
-        $groupKey = $taskId !== '' ? $taskId : '_no_task';
-        if (!isset($buckets[$key]['tasks'][$dow][$groupKey])) {
-            $buckets[$key]['tasks'][$dow][$groupKey] = [
-                'task_id'     => $taskId !== '' ? $taskId : null,
-                'task_name'   => isset($e['task_name']) && $e['task_name'] !== null ? (string) $e['task_name'] : null,
-                'task_url'    => isset($e['task_url'])  && $e['task_url']  !== null ? (string) $e['task_url']  : null,
+        // Resolve post context: parent if this entry's task is a Design/Copy
+        // subtask, otherwise the task itself.
+        $taskId       = isset($e['task_id'])        && $e['task_id']        !== '' ? (string) $e['task_id']        : '';
+        $taskName     = isset($e['task_name'])      && $e['task_name']      !== '' ? (string) $e['task_name']      : null;
+        $taskUrl      = isset($e['task_url'])       && $e['task_url']       !== '' ? (string) $e['task_url']       : null;
+        $parentId     = isset($e['parent_task_id']) && $e['parent_task_id'] !== '' ? (string) $e['parent_task_id'] : '';
+        $parentName   = isset($e['parent_name'])    && $e['parent_name']    !== '' ? (string) $e['parent_name']    : null;
+
+        $postId   = $parentId !== '' ? $parentId   : $taskId;
+        $postName = $parentId !== '' ? $parentName : $taskName;
+        $postUrl  = $parentId !== ''
+            ? 'https://app.clickup.com/t/' . $parentId
+            : $taskUrl;
+
+        $groupKey = $postId !== '' ? $postId : '_no_task';
+        if (!isset($buckets[$key]['posts'][$dow][$groupKey])) {
+            $buckets[$key]['posts'][$dow][$groupKey] = [
+                'post_id'     => $postId !== '' ? $postId : null,
+                'post_name'   => $postName,
+                'post_url'    => $postUrl,
                 'duration_ms' => 0,
             ];
         }
-        $buckets[$key]['tasks'][$dow][$groupKey]['duration_ms'] += $dur;
-        // If this entry has a name/url and the existing row is missing them
-        // (e.g. earlier entry had no joinable task row), upgrade.
+        $buckets[$key]['posts'][$dow][$groupKey]['duration_ms'] += $dur;
+        // Upgrade missing name/url if a later entry supplies them.
         if (
-            $buckets[$key]['tasks'][$dow][$groupKey]['task_name'] === null
-            && isset($e['task_name']) && $e['task_name'] !== null
+            $buckets[$key]['posts'][$dow][$groupKey]['post_name'] === null
+            && $postName !== null
         ) {
-            $buckets[$key]['tasks'][$dow][$groupKey]['task_name'] = (string) $e['task_name'];
+            $buckets[$key]['posts'][$dow][$groupKey]['post_name'] = $postName;
         }
         if (
-            $buckets[$key]['tasks'][$dow][$groupKey]['task_url'] === null
-            && isset($e['task_url']) && $e['task_url'] !== null
+            $buckets[$key]['posts'][$dow][$groupKey]['post_url'] === null
+            && $postUrl !== null
         ) {
-            $buckets[$key]['tasks'][$dow][$groupKey]['task_url'] = (string) $e['task_url'];
+            $buckets[$key]['posts'][$dow][$groupKey]['post_url'] = $postUrl;
         }
     }
 
@@ -160,25 +175,24 @@ function collab_aggregate_weeks(
 
     foreach ($buckets as $b) {
         $daysHours = [];
-        $daysTasks = [];
+        $daysPosts = [];
         $totalMs   = 0;
         foreach ($dayNames as $dow => $name) {
             $ms = $b['days'][$dow];
             $daysHours[$name] = round($ms / 3_600_000, 2);
             $totalMs += $ms;
 
-            // Flatten the task map into a list, sorted by duration desc for a
-            // consistent most-time-first ordering in the UI.
-            $list = array_values($b['tasks'][$dow]);
+            // Flatten the post map into a list, sorted by duration desc so
+            // most-time-first reads naturally in the UI.
+            $list = array_values($b['posts'][$dow]);
             usort($list, function ($a, $b) {
                 return ($b['duration_ms'] <=> $a['duration_ms']);
             });
-            // Expose hours alongside the raw ms for convenience.
             foreach ($list as &$row) {
                 $row['hours'] = round($row['duration_ms'] / 3_600_000, 2);
             }
             unset($row);
-            $daysTasks[$name] = $list;
+            $daysPosts[$name] = $list;
         }
         $totalHours = round($totalMs / 3_600_000, 2);
         $out[] = [
@@ -186,7 +200,7 @@ function collab_aggregate_weeks(
             'week_number' => $b['meta']['week'],
             'week_start'  => $b['meta']['monday']->format('Y-m-d'),
             'days'        => $daysHours,
-            'days_tasks'  => $daysTasks,
+            'days_posts'  => $daysPosts,
             'total_hours' => $totalHours,
             'status'      => collab_status($totalHours, $weekly_hours),
         ];

@@ -993,18 +993,16 @@ function db_get_time_entries(string $workspace_id, array $user_ids, int $start_m
     if (!$user_ids) return [];
 
     $placeholders = implode(',', array_fill(0, count($user_ids), '?'));
-    // LEFT JOIN tasks so callers (Colaboradores day popup) can display task
-    // name + ClickUp URL without a second round-trip. task_id may be NULL or
-    // the task may be missing from the local cache — those rows still appear
-    // with task_name/task_url = NULL, which the aggregator handles.
-    $sql = "SELECT te.*, t.name AS task_name, t.url AS task_url
-              FROM time_entries te
-         LEFT JOIN tasks t ON t.id = te.task_id
-             WHERE te.workspace_id = ?
-               AND te.user_id IN ($placeholders)
-               AND te.start_ms >= ?
-               AND te.start_ms <  ?
-             ORDER BY te.start_ms ASC";
+    // F03 — task_name/url and parent_task_id/name are denormalised onto
+    // time_entries by the sync, so no JOIN with the (per-user scoped) tasks
+    // cache is needed. Returning the raw columns lets the aggregator resolve
+    // post context (parent ?? task) in one place.
+    $sql = "SELECT * FROM time_entries
+             WHERE workspace_id = ?
+               AND user_id IN ($placeholders)
+               AND start_ms >= ?
+               AND start_ms <  ?
+             ORDER BY start_ms ASC";
 
     $params = array_merge([$workspace_id], $user_ids, [$start_ms, $end_ms]);
     $stmt = db()->prepare($sql);

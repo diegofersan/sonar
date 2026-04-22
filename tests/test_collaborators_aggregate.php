@@ -116,8 +116,9 @@ $we = new DateTimeImmutable('2026-04-13', $tz);
 $weeks = collab_iso_weeks($ws, $we);
 
 // Helper to build an entry row from a Lisbon-local date + hours.
-// Optional $task adds task_id/name/url (what db_get_time_entries now returns
-// after the LEFT JOIN).
+// Optional $task adds task_id/name/url and, if present, parent_*  fields —
+// what db_get_time_entries returns after F03 (task denormalised + optional
+// post parent for Design/Copy subtasks).
 function mkEntry(string $localDateTime, float $hours, DateTimeZone $tz, ?array $task = null): array {
     $dt = new DateTimeImmutable($localDateTime, $tz);
     $row = [
@@ -125,9 +126,11 @@ function mkEntry(string $localDateTime, float $hours, DateTimeZone $tz, ?array $
         'duration_ms' => (int) round($hours * 3_600_000),
     ];
     if ($task !== null) {
-        $row['task_id']   = $task['id']   ?? null;
-        $row['task_name'] = $task['name'] ?? null;
-        $row['task_url']  = $task['url']  ?? null;
+        $row['task_id']        = $task['id']          ?? null;
+        $row['task_name']      = $task['name']        ?? null;
+        $row['task_url']       = $task['url']         ?? null;
+        $row['parent_task_id'] = $task['parent_id']   ?? null;
+        $row['parent_name']    = $task['parent_name'] ?? null;
     }
     return $row;
 }
@@ -190,51 +193,67 @@ check('50h week vs 40 weekly → over',
     $aggOver[0]['status']);
 
 // ---------------------------------------------------------------------------
-// 5. collab_aggregate_weeks — days_tasks (per-day task breakdown for popup)
+// 5. collab_aggregate_weeks — days_posts (per-day post breakdown for popup)
 // ---------------------------------------------------------------------------
-echo "\n5. collab_aggregate_weeks — days_tasks\n";
+echo "\n5. collab_aggregate_weeks — days_posts\n";
 
-$taskA = ['id' => 'T1', 'name' => 'Task A', 'url' => 'https://clickup.com/t/T1'];
-$taskB = ['id' => 'T2', 'name' => 'Task B', 'url' => 'https://clickup.com/t/T2'];
+// Post-level task (no parent) and two subtasks (Design + Copy) of the SAME
+// parent post. Expectation: the two subtasks collapse into a single row
+// keyed by the parent id, with summed hours.
+$postA    = ['id' => 'T1', 'name' => 'Task A', 'url' => 'https://clickup.com/t/T1'];
+$postB    = ['id' => 'T2', 'name' => 'Task B', 'url' => 'https://clickup.com/t/T2'];
+$designX  = ['id' => 'SUB_D', 'name' => 'Design', 'url' => 'https://clickup.com/t/SUB_D',
+             'parent_id' => 'POST_X', 'parent_name' => 'Carousel sobre X'];
+$copyX    = ['id' => 'SUB_C', 'name' => 'Copy',   'url' => 'https://clickup.com/t/SUB_C',
+             'parent_id' => 'POST_X', 'parent_name' => 'Carousel sobre X'];
 
 $dtEntries = [
-    // Mon: two entries on Task A (should merge into one row), one on Task B.
-    mkEntry('2026-03-30 09:00', 2.0, $tz, $taskA), // Mon A
-    mkEntry('2026-03-30 14:00', 1.5, $tz, $taskA), // Mon A (merge)
-    mkEntry('2026-03-30 16:00', 1.0, $tz, $taskB), // Mon B
+    // Mon: two entries on Post A (merge), one on Post B, Design+Copy of POST_X (merge to POST_X).
+    mkEntry('2026-03-30 09:00', 2.0, $tz, $postA),   // Mon A
+    mkEntry('2026-03-30 14:00', 1.5, $tz, $postA),   // Mon A (merge)
+    mkEntry('2026-03-30 16:00', 1.0, $tz, $postB),   // Mon B
+    mkEntry('2026-03-30 10:00', 2.5, $tz, $designX), // Mon POST_X (via Design sub)
+    mkEntry('2026-03-30 15:00', 0.5, $tz, $copyX),   // Mon POST_X (via Copy sub — merge)
     // Tue: one entry with no task_id at all (stale/missing from cache).
     mkEntry('2026-03-31 10:00', 3.0, $tz, ['id' => null, 'name' => null, 'url' => null]),
 ];
 $aggDT = collab_aggregate_weeks($dtEntries, 40, $weeks, $tz);
 
-$w1Mon = $aggDT[0]['days_tasks']['mon'] ?? [];
-check('Mon has 2 task rows (A merged, B distinct)',
-    count($w1Mon) === 2, 'got ' . count($w1Mon));
+$w1Mon = $aggDT[0]['days_posts']['mon'] ?? [];
+check('Mon has 3 post rows (A merged, B distinct, POST_X from 2 subs merged)',
+    count($w1Mon) === 3, 'got ' . count($w1Mon));
 
-// Rows are sorted by duration desc → Task A (3.5h) first, Task B (1h) second.
-check('Mon first row = Task A (merged)',
-    ($w1Mon[0]['task_id'] ?? '') === 'T1' && ($w1Mon[0]['task_name'] ?? '') === 'Task A');
-check('Mon first row duration_ms = 3.5h',
-    ($w1Mon[0]['duration_ms'] ?? 0) === (int) round(3.5 * 3_600_000));
-check('Mon first row hours = 3.5',
-    ($w1Mon[0]['hours'] ?? null) === 3.5);
-check('Mon second row = Task B',
-    ($w1Mon[1]['task_id'] ?? '') === 'T2');
+// Rows sorted by duration desc: Post A 3.5h, POST_X 3h, Post B 1h.
+check('Mon first row = Post A (merged, 3.5h)',
+    ($w1Mon[0]['post_id'] ?? '') === 'T1'
+    && ($w1Mon[0]['post_name'] ?? '') === 'Task A'
+    && ($w1Mon[0]['hours'] ?? null) === 3.5);
 
-$w1Tue = $aggDT[0]['days_tasks']['tue'] ?? [];
+check('Mon second row = POST_X (from Design+Copy subs, 3.0h)',
+    ($w1Mon[1]['post_id'] ?? '') === 'POST_X'
+    && ($w1Mon[1]['post_name'] ?? '') === 'Carousel sobre X'
+    && ($w1Mon[1]['hours'] ?? null) === 3.0);
+
+check('POST_X url built from parent id',
+    ($w1Mon[1]['post_url'] ?? '') === 'https://app.clickup.com/t/POST_X');
+
+check('Mon third row = Post B',
+    ($w1Mon[2]['post_id'] ?? '') === 'T2' && ($w1Mon[2]['hours'] ?? null) === 1.0);
+
+$w1Tue = $aggDT[0]['days_posts']['tue'] ?? [];
 check('Tue has 1 row (untagged entry)',  count($w1Tue) === 1);
-check('Tue row has null task_id',
-    array_key_exists('task_id', $w1Tue[0]) && $w1Tue[0]['task_id'] === null);
-check('Tue row has null task_name',
-    array_key_exists('task_name', $w1Tue[0]) && $w1Tue[0]['task_name'] === null);
+check('Tue row has null post_id',
+    array_key_exists('post_id', $w1Tue[0]) && $w1Tue[0]['post_id'] === null);
+check('Tue row has null post_name',
+    array_key_exists('post_name', $w1Tue[0]) && $w1Tue[0]['post_name'] === null);
 
 // Empty days should exist as empty lists (not missing keys).
-check('Wed is empty list',  is_array($aggDT[0]['days_tasks']['wed'] ?? null) && count($aggDT[0]['days_tasks']['wed']) === 0);
-check('Sun is empty list',  is_array($aggDT[0]['days_tasks']['sun'] ?? null) && count($aggDT[0]['days_tasks']['sun']) === 0);
+check('Wed is empty list',  is_array($aggDT[0]['days_posts']['wed'] ?? null) && count($aggDT[0]['days_posts']['wed']) === 0);
+check('Sun is empty list',  is_array($aggDT[0]['days_posts']['sun'] ?? null) && count($aggDT[0]['days_posts']['sun']) === 0);
 
-// Totals unchanged: Mon = 4.5h, Tue = 3h, week1 = 7.5h.
-check('days.mon total still 4.5h',  $aggDT[0]['days']['mon'] === 4.5);
-check('days.tue total still 3h',    $aggDT[0]['days']['tue'] === 3.0);
+// Totals unchanged by the grouping change: Mon = 2+1.5+1+2.5+0.5 = 7.5h.
+check('days.mon total = 7.5h',  $aggDT[0]['days']['mon'] === 7.5);
+check('days.tue total = 3h',    $aggDT[0]['days']['tue'] === 3.0);
 
 // ---------------------------------------------------------------------------
 echo "\nPassed: $pass\nFailed: $fail\n";
