@@ -175,6 +175,18 @@ function db_migrate(): void
     } catch (\Throwable $e) {
         // Column already exists — ignore
     }
+
+    // F03 — denormalise post context onto time_entries so the Colaboradores
+    // day popup can render post title + url without joining against the
+    // (per-user scoped) tasks cache. All four columns are NULL-able and get
+    // filled by the time-entries sync (see db_upsert_time_entries).
+    foreach (['task_name', 'task_url', 'parent_task_id', 'parent_name'] as $col) {
+        try {
+            $pdo->exec("ALTER TABLE time_entries ADD COLUMN {$col} TEXT");
+        } catch (\Throwable $e) {
+            // Column already exists — ignore
+        }
+    }
 }
 
 /**
