@@ -256,5 +256,56 @@ check('days.mon total = 7.5h',  $aggDT[0]['days']['mon'] === 7.5);
 check('days.tue total = 3h',    $aggDT[0]['days']['tue'] === 3.0);
 
 // ---------------------------------------------------------------------------
+// 6. collab_parse_month_param
+// ---------------------------------------------------------------------------
+echo "\n6. collab_parse_month_param\n";
+
+$now = new DateTimeImmutable('2026-04-22 10:30:00', $tz);
+
+check('null → null',
+    collab_parse_month_param(null, $tz, $now) === null);
+check("'' → null",
+    collab_parse_month_param('', $tz, $now) === null);
+
+$p = collab_parse_month_param('2026-03', $tz, $now);
+check('past month → DateTimeImmutable',     $p instanceof DateTimeImmutable);
+check('past month anchored at day 1',       $p->format('Y-m-d') === '2026-03-01');
+check('past month at 00:00',                $p->format('H:i:s') === '00:00:00');
+check('past month in given tz',             $p->getTimezone()->getName() === 'Europe/Lisbon');
+
+$pCurrent = collab_parse_month_param('2026-04', $tz, $now);
+check('current month accepted',             $pCurrent !== null && $pCurrent->format('Y-m-d') === '2026-04-01');
+
+$threw = false;
+try { collab_parse_month_param('2026-05', $tz, $now); }
+catch (InvalidArgumentException $e) { $threw = true; }
+check('future month throws',                $threw);
+
+$threw = false;
+try { collab_parse_month_param('2099-01', $tz, $now); }
+catch (InvalidArgumentException $e) { $threw = true; }
+check('far-future month throws',            $threw);
+
+$threw = false;
+try { collab_parse_month_param('foo', $tz, $now); }
+catch (InvalidArgumentException $e) { $threw = true; }
+check('garbage input throws',               $threw);
+
+$threw = false;
+try { collab_parse_month_param('2026-13', $tz, $now); }
+catch (InvalidArgumentException $e) { $threw = true; }
+check('invalid month number throws',        $threw);
+
+$threw = false;
+try { collab_parse_month_param('26-04', $tz, $now); }
+catch (InvalidArgumentException $e) { $threw = true; }
+check('short year throws',                  $threw);
+
+// Year-boundary: asking Dec from Jan of next year is a past month.
+$jan2027 = new DateTimeImmutable('2027-01-15', $tz);
+$pDec = collab_parse_month_param('2026-12', $tz, $jan2027);
+check('Dec-from-next-year accepted',        $pDec !== null && $pDec->format('Y-m-d') === '2026-12-01');
+
+// ---------------------------------------------------------------------------
 echo "\nPassed: $pass\nFailed: $fail\n";
 exit($fail === 0 ? 0 : 1);

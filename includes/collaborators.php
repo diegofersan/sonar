@@ -58,6 +58,50 @@ function collab_month_window(DateTimeZone $tz, ?DateTimeImmutable $now = null): 
 }
 
 /**
+ * Parse a `?month=YYYY-MM` query parameter into a `DateTimeImmutable` anchored
+ * at the 1st of that month, 00:00 in `$tz`. Returned value is meant to be fed
+ * to `collab_month_window` as the `$now` argument.
+ *
+ * - `null` / `''` → returns `null` (caller treats as "current month").
+ * - Valid `YYYY-MM` for a past or current month → returns the anchor.
+ * - Malformed input or a month in the future → throws InvalidArgumentException.
+ *
+ * Future months are rejected because there are no time entries to show and no
+ * useful semantic for "pre-allocating capacity" in this view.
+ */
+function collab_parse_month_param(
+    ?string $raw,
+    DateTimeZone $tz,
+    ?DateTimeImmutable $now = null
+): ?DateTimeImmutable {
+    if ($raw === null || $raw === '') {
+        return null;
+    }
+    if (!preg_match('/^(\d{4})-(\d{2})$/', $raw, $m)) {
+        throw new InvalidArgumentException('Invalid month format (expected YYYY-MM)');
+    }
+    $year  = (int) $m[1];
+    $month = (int) $m[2];
+    if ($month < 1 || $month > 12) {
+        throw new InvalidArgumentException('Invalid month number');
+    }
+
+    $anchor = (new DateTimeImmutable('now', $tz))
+        ->setDate($year, $month, 1)
+        ->setTime(0, 0, 0);
+
+    $current = ($now ? $now->setTimezone($tz) : new DateTimeImmutable('now', $tz))
+        ->modify('first day of this month')
+        ->setTime(0, 0, 0);
+
+    if ($anchor > $current) {
+        throw new InvalidArgumentException('Month is in the future');
+    }
+
+    return $anchor;
+}
+
+/**
  * Walk Monday-by-Monday from $start to $end (exclusive) and emit one entry
  * per ISO week. Expects $start to already be a Monday.
  *
