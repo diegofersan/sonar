@@ -85,6 +85,7 @@ if (empty($_SESSION['clickup_workspace'])) {
     <nav class="app-navbar" aria-label="Vistas">
         <a href="#editorial" class="nav-link active" data-nav="editorial">Linha Editorial</a>
         <?php if ($isDepartmentHead): ?>
+        <a href="#forecast" class="nav-link" data-nav="forecast">Plano da semana</a>
         <a href="#collaborators" class="nav-link" data-nav="collaborators">Colaboradores</a>
         <?php endif; ?>
     </nav>
@@ -169,6 +170,16 @@ if (empty($_SESSION['clickup_workspace'])) {
         </section>
 
         <?php if ($isDepartmentHead): ?>
+        <section class="view" data-view="forecast" style="display:none;">
+            <div class="toolbar">
+                <div class="toolbar-left">
+                    <h2>Plano da semana</h2>
+                    <span id="forecast-week-label" class="text-secondary"></span>
+                </div>
+            </div>
+            <div id="forecast-list"></div>
+        </section>
+
         <section class="view" data-view="collaborators" style="display:none;">
             <div class="toolbar">
                 <div class="toolbar-left">

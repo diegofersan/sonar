@@ -1244,6 +1244,126 @@
     btn.innerHTML = originalText;
   }
 
+  /* ---------- Plano da semana (F02) ---------- */
+
+  var _forecastLoaded = false;
+  var WEEKDAY_PT = { mon: 'Seg', tue: 'Ter', wed: 'Qua', thu: 'Qui', fri: 'Sex' };
+  var FORECAST_STATUS_LABEL = { under: 'Sub', ok: 'Ok', over: 'Sobre' };
+
+  function formatWeekLabel(startISO, endISO) {
+    if (!startISO || !endISO) return '';
+    var s = startISO.split('-'); // [YYYY, MM, DD]
+    var e = endISO.split('-');
+    return s[2] + '/' + s[1] + ' – ' + e[2] + '/' + e[1];
+  }
+
+  async function fetchForecast() {
+    var listEl = document.getElementById('forecast-list');
+    if (!listEl) return;
+
+    listEl.innerHTML =
+      '<div class="loading-container">' +
+      '<span class="loading-spinner"></span>' +
+      '<span>A carregar plano da semana...</span>' +
+      '</div>';
+
+    try {
+      var data = await apiFetch('/api/workload_forecast.php');
+      renderForecast(data);
+    } catch (err) {
+      listEl.innerHTML = '<div class="error-message">Erro: ' + escapeHtml(err.message) + '</div>';
+      Toast.error('Erro ao carregar plano da semana: ' + err.message);
+    }
+  }
+
+  function renderForecast(data) {
+    var listEl = document.getElementById('forecast-list');
+    var labelEl = document.getElementById('forecast-week-label');
+    if (!listEl) return;
+
+    if (labelEl) labelEl.textContent = formatWeekLabel(data.week_start, data.week_end);
+
+    var collabs = data.collaborators || [];
+    if (!collabs.length) {
+      listEl.innerHTML =
+        '<div class="empty-state">' +
+        '<h3>Sem colaboradores no grupo Design</h3>' +
+        '<p>' + escapeHtml(data.warning || 'O grupo não tem membros.') + '</p>' +
+        '</div>';
+      return;
+    }
+
+    var html = '';
+    collabs.forEach(function (c) {
+      html += renderForecastCard(c);
+    });
+    listEl.innerHTML = html;
+  }
+
+  function renderForecastCard(c) {
+    var user = c.user || {};
+    var displayName = user.username || user.email || user.id || '—';
+    var target = Number(c.daily_target) || 0;
+
+    var avatar;
+    if (user.profilePicture) {
+      avatar = '<img class="user-avatar" src="' + escapeHtml(user.profilePicture) + '" alt="">';
+    } else {
+      var initials = user.initials || displayName.charAt(0).toUpperCase();
+      var bg = user.color ? ' style="background:' + escapeHtml(user.color) + '"' : '';
+      avatar = '<span class="user-avatar-placeholder"' + bg + '>' + escapeHtml(initials) + '</span>';
+    }
+
+    var head =
+      '<header class="collab-header">' +
+      avatar +
+      '<div class="collab-meta">' +
+      '<h3 class="collab-name">' + escapeHtml(displayName) + '</h3>' +
+      '<span class="collab-weekly">' + target + ' tasks / dia</span>' +
+      '</div>' +
+      '</header>';
+
+    var cells = '';
+    (c.days || []).forEach(function (d) {
+      var status = d.status || 'under';
+      var count = Number(d.active_count) || 0;
+      var overdue = Number(d.overdue_count) || 0;
+      var undated = Number(d.undated_count) || 0;
+      var dayLabel = WEEKDAY_PT[d.weekday] || (d.weekday || '—');
+      var dateSuffix = d.date ? d.date.substring(8, 10) + '/' + d.date.substring(5, 7) : '';
+
+      var extras = '';
+      if (overdue > 0) {
+        extras += '<span class="forecast-overdue" title="Overdue">⚠ ' + overdue + ' overdue</span>';
+      }
+      if (undated > 0) {
+        extras += '<span class="forecast-undated" title="Sem data">+' + undated + ' sem data</span>';
+      }
+
+      cells +=
+        '<div class="forecast-day status-' + escapeHtml(status) + '">' +
+        '<div class="forecast-day-header">' +
+        '<span class="forecast-day-label">' + escapeHtml(dayLabel) + '</span>' +
+        '<span class="forecast-day-date">' + escapeHtml(dateSuffix) + '</span>' +
+        '</div>' +
+        '<div class="forecast-day-count">' +
+        '<span class="forecast-count">' + count + '</span>' +
+        '<span class="forecast-target">/ ' + target + '</span>' +
+        '</div>' +
+        '<div class="forecast-day-footer">' +
+        '<span class="collab-badge ' + escapeHtml(status) + '">' +
+        (FORECAST_STATUS_LABEL[status] || status) +
+        '</span>' +
+        extras +
+        '</div>' +
+        '</div>';
+    });
+
+    return '<article class="collab-card forecast-card">' + head +
+      '<div class="forecast-grid">' + cells + '</div>' +
+      '</article>';
+  }
+
   /* ---------- View router (F01) ---------- */
 
   function showView(name) {
@@ -1271,6 +1391,11 @@
       _collabLoaded = true;
       fetchCollaborators();
     }
+    // Lazy-load the forecast view the first time it's shown.
+    if (name === 'forecast' && !_forecastLoaded) {
+      _forecastLoaded = true;
+      fetchForecast();
+    }
   }
 
   function bindNavbar() {
@@ -1284,7 +1409,7 @@
     });
     // Pick the initial view from the URL hash (so deep links / refresh work).
     var initial = (location.hash || '').replace(/^#/, '');
-    if (initial !== 'editorial' && initial !== 'collaborators') initial = 'editorial';
+    if (initial !== 'editorial' && initial !== 'collaborators' && initial !== 'forecast') initial = 'editorial';
     showView(initial);
   }
 

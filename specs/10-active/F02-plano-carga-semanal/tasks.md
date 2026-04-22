@@ -125,7 +125,7 @@ vai com commit próprio por incluir revisão da spec + do próprio `tasks.md`.
 
 ## Fase E — Frontend
 
-### [ ] 6. Vista "Plano da semana"
+### [x] 6. Vista "Plano da semana"
 
 - `dashboard.php`:
   - Entrada nova na navbar: `<a data-nav="forecast">Plano da semana</a>` entre

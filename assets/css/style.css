@@ -1561,3 +1561,96 @@ a {
     justify-content: flex-end;
   }
 }
+
+/* ---------- Plano da semana (F02) ---------- */
+.forecast-card {
+  /* Reutiliza .collab-card base styles. */
+}
+
+.forecast-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.forecast-day {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 6.5rem;
+}
+
+.forecast-day.status-over {
+  border-color: rgba(248, 113, 113, 0.5);
+  background: rgba(248, 113, 113, 0.05);
+}
+
+.forecast-day.status-ok {
+  border-color: rgba(52, 211, 153, 0.35);
+}
+
+.forecast-day-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.forecast-day-label {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text);
+}
+
+.forecast-day-date {
+  font-variant-numeric: tabular-nums;
+}
+
+.forecast-day-count {
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.forecast-count {
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.forecast-target {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.forecast-day-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: auto;
+  font-size: 0.75rem;
+}
+
+.forecast-overdue {
+  color: #f87171;
+  font-weight: 500;
+}
+
+.forecast-undated {
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 720px) {
+  .forecast-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
