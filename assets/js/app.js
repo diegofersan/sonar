@@ -1237,18 +1237,18 @@
       : '<div class="empty-state"><p>Sem tarefas registadas neste dia.</p></div>';
 
     var header =
-      '<div class="forecast-modal-header">' +
+      '<div class="day-modal-header">' +
       '<h3>' + escapeHtml(title) + '</h3>' +
-      '<span class="forecast-modal-count">' + formatHours(totalHours) + '</span>' +
-      '<button type="button" class="forecast-modal-close" aria-label="Fechar">&times;</button>' +
+      '<span class="day-modal-count">' + formatHours(totalHours) + '</span>' +
+      '<button type="button" class="day-modal-close" aria-label="Fechar">&times;</button>' +
       '</div>';
 
     var backdrop = document.createElement('div');
-    backdrop.className = 'forecast-modal-backdrop';
+    backdrop.className = 'day-modal-backdrop';
     backdrop.innerHTML =
-      '<div class="forecast-modal" role="dialog" aria-modal="true">' +
+      '<div class="day-modal" role="dialog" aria-modal="true">' +
       header +
-      '<div class="forecast-modal-body">' + rows + '</div>' +
+      '<div class="day-modal-body">' + rows + '</div>' +
       '</div>';
 
     function close() {
@@ -1260,7 +1260,7 @@
     backdrop.addEventListener('click', function (e) {
       if (e.target === backdrop) close();
     });
-    backdrop.querySelector('.forecast-modal-close').addEventListener('click', close);
+    backdrop.querySelector('.day-modal-close').addEventListener('click', close);
     document.addEventListener('keydown', onKey);
 
     document.body.appendChild(backdrop);
@@ -1280,10 +1280,10 @@
       ? '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(name) + '</a>'
       : escapeHtml(name);
 
-    return '<div class="forecast-modal-row">' +
-      '<div class="forecast-modal-title">' + titleCell + '</div>' +
-      '<div class="forecast-modal-meta">' +
-      '<span class="forecast-modal-status">' + escapeHtml(formatHours(hours)) + '</span>' +
+    return '<div class="day-modal-row">' +
+      '<div class="day-modal-title">' + titleCell + '</div>' +
+      '<div class="day-modal-meta">' +
+      '<span class="day-modal-status">' + escapeHtml(formatHours(hours)) + '</span>' +
       '</div>' +
       '</div>';
   }
@@ -1391,7 +1391,7 @@
     });
     // Pick the initial view from the URL hash (so deep links / refresh work).
     var initial = (location.hash || '').replace(/^#/, '');
-    if (initial !== 'editorial' && initial !== 'collaborators' && initial !== 'forecast') initial = 'editorial';
+    if (initial !== 'editorial' && initial !== 'collaborators') initial = 'editorial';
     showView(initial);
   }
 

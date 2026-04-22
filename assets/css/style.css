@@ -1579,11 +1579,8 @@ button.collab-day:active {
   }
 }
 
-/* Modal — usado pelo popup de tasks do dia no Colaboradores. Classes
-   ainda prefixadas com `forecast-` por razões históricas (introduzidas
-   no F02); R01 remove F02 mas mantém o modal porque o popup do
-   Colaboradores depende dele. Rename → .day-modal-* em commit separado. */
-.forecast-modal-backdrop {
+/* Modal — usado pelo popup de tasks do dia no Colaboradores. */
+.day-modal-backdrop {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
@@ -1594,7 +1591,7 @@ button.collab-day:active {
   padding: 1rem;
 }
 
-.forecast-modal {
+.day-modal {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 12px;
@@ -1607,7 +1604,7 @@ button.collab-day:active {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
-.forecast-modal-header {
+.day-modal-header {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -1615,7 +1612,7 @@ button.collab-day:active {
   border-bottom: 1px solid var(--color-border);
 }
 
-.forecast-modal-header h3 {
+.day-modal-header h3 {
   margin: 0;
   flex: 1;
   font-size: 1rem;
@@ -1623,12 +1620,12 @@ button.collab-day:active {
   color: var(--color-text);
 }
 
-.forecast-modal-count {
+.day-modal-count {
   font-size: 0.8rem;
   color: var(--color-text-secondary);
 }
 
-.forecast-modal-close {
+.day-modal-close {
   background: transparent;
   border: 0;
   color: var(--color-text-secondary);
@@ -1638,16 +1635,16 @@ button.collab-day:active {
   padding: 0 0.25rem;
 }
 
-.forecast-modal-close:hover {
+.day-modal-close:hover {
   color: var(--color-text);
 }
 
-.forecast-modal-body {
+.day-modal-body {
   overflow-y: auto;
   padding: 0.5rem 0;
 }
 
-.forecast-modal-row {
+.day-modal-row {
   padding: 0.75rem 1.25rem;
   border-bottom: 1px solid var(--color-border);
   display: flex;
@@ -1655,28 +1652,28 @@ button.collab-day:active {
   gap: 0.25rem;
 }
 
-.forecast-modal-row:last-child {
+.day-modal-row:last-child {
   border-bottom: 0;
 }
 
-.forecast-modal-title a {
+.day-modal-title a {
   color: var(--color-text);
   text-decoration: none;
   font-weight: 500;
 }
 
-.forecast-modal-title a:hover {
+.day-modal-title a:hover {
   text-decoration: underline;
 }
 
-.forecast-modal-meta {
+.day-modal-meta {
   display: flex;
   gap: 0.5rem;
   font-size: 0.75rem;
   color: var(--color-text-secondary);
 }
 
-.forecast-modal-overdue {
+.day-modal-overdue {
   color: #f87171;
   font-weight: 500;
 }
