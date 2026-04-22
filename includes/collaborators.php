@@ -90,7 +90,9 @@ function collab_iso_weeks(DateTimeImmutable $start, DateTimeImmutable $end): arr
  *
  * @return array<int, array{
  *   year:int, week_number:int, week_start:string,
- *   days: array<string,float>, total_hours:float, status:string
+ *   days: array<string,float>,
+ *   days_tasks: array<string, list<array{task_id:?string, task_name:?string, task_url:?string, duration_ms:int, hours:float}>>,
+ *   total_hours:float, status:string
  * }>
  */
 function collab_aggregate_weeks(
@@ -99,13 +101,18 @@ function collab_aggregate_weeks(
     array $weeks,
     DateTimeZone $tz
 ): array {
-    // Bucket: "YYYY-WW" → per-day totals in ms (1=Mon..7=Sun).
+    // Bucket: "YYYY-WW" → per-day totals in ms (1=Mon..7=Sun) plus per-task
+    // breakdown per weekday for the click-to-detail popup. Structure:
+    //   days   → [dow => total_ms]
+    //   tasks  → [dow => [task_id => ['task_id','task_name','task_url','duration_ms']]]
+    //            entries without task_id get grouped under the sentinel key '_no_task'.
     $buckets = [];
     foreach ($weeks as $w) {
         $key = sprintf('%04d-%02d', $w['year'], $w['week']);
         $buckets[$key] = [
-            'meta' => $w,
-            'days' => array_fill(1, 7, 0),
+            'meta'  => $w,
+            'days'  => array_fill(1, 7, 0),
+            'tasks' => array_fill(1, 7, []),
         ];
     }
 
@@ -119,6 +126,33 @@ function collab_aggregate_weeks(
 
         $dow = (int) $dt->format('N');
         $buckets[$key]['days'][$dow] += $dur;
+
+        // Group multiple entries for the same task/day into one row (sum durations).
+        $taskId   = isset($e['task_id']) && $e['task_id'] !== '' ? (string) $e['task_id'] : '';
+        $groupKey = $taskId !== '' ? $taskId : '_no_task';
+        if (!isset($buckets[$key]['tasks'][$dow][$groupKey])) {
+            $buckets[$key]['tasks'][$dow][$groupKey] = [
+                'task_id'     => $taskId !== '' ? $taskId : null,
+                'task_name'   => isset($e['task_name']) && $e['task_name'] !== null ? (string) $e['task_name'] : null,
+                'task_url'    => isset($e['task_url'])  && $e['task_url']  !== null ? (string) $e['task_url']  : null,
+                'duration_ms' => 0,
+            ];
+        }
+        $buckets[$key]['tasks'][$dow][$groupKey]['duration_ms'] += $dur;
+        // If this entry has a name/url and the existing row is missing them
+        // (e.g. earlier entry had no joinable task row), upgrade.
+        if (
+            $buckets[$key]['tasks'][$dow][$groupKey]['task_name'] === null
+            && isset($e['task_name']) && $e['task_name'] !== null
+        ) {
+            $buckets[$key]['tasks'][$dow][$groupKey]['task_name'] = (string) $e['task_name'];
+        }
+        if (
+            $buckets[$key]['tasks'][$dow][$groupKey]['task_url'] === null
+            && isset($e['task_url']) && $e['task_url'] !== null
+        ) {
+            $buckets[$key]['tasks'][$dow][$groupKey]['task_url'] = (string) $e['task_url'];
+        }
     }
 
     $dayNames = [1 => 'mon', 2 => 'tue', 3 => 'wed', 4 => 'thu', 5 => 'fri', 6 => 'sat', 7 => 'sun'];
@@ -126,11 +160,25 @@ function collab_aggregate_weeks(
 
     foreach ($buckets as $b) {
         $daysHours = [];
+        $daysTasks = [];
         $totalMs   = 0;
         foreach ($dayNames as $dow => $name) {
             $ms = $b['days'][$dow];
             $daysHours[$name] = round($ms / 3_600_000, 2);
             $totalMs += $ms;
+
+            // Flatten the task map into a list, sorted by duration desc for a
+            // consistent most-time-first ordering in the UI.
+            $list = array_values($b['tasks'][$dow]);
+            usort($list, function ($a, $b) {
+                return ($b['duration_ms'] <=> $a['duration_ms']);
+            });
+            // Expose hours alongside the raw ms for convenience.
+            foreach ($list as &$row) {
+                $row['hours'] = round($row['duration_ms'] / 3_600_000, 2);
+            }
+            unset($row);
+            $daysTasks[$name] = $list;
         }
         $totalHours = round($totalMs / 3_600_000, 2);
         $out[] = [
@@ -138,6 +186,7 @@ function collab_aggregate_weeks(
             'week_number' => $b['meta']['week'],
             'week_start'  => $b['meta']['monday']->format('Y-m-d'),
             'days'        => $daysHours,
+            'days_tasks'  => $daysTasks,
             'total_hours' => $totalHours,
             'status'      => collab_status($totalHours, $weekly_hours),
         ];

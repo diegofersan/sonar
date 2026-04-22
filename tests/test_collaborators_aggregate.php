@@ -116,12 +116,20 @@ $we = new DateTimeImmutable('2026-04-13', $tz);
 $weeks = collab_iso_weeks($ws, $we);
 
 // Helper to build an entry row from a Lisbon-local date + hours.
-function mkEntry(string $localDateTime, float $hours, DateTimeZone $tz): array {
+// Optional $task adds task_id/name/url (what db_get_time_entries now returns
+// after the LEFT JOIN).
+function mkEntry(string $localDateTime, float $hours, DateTimeZone $tz, ?array $task = null): array {
     $dt = new DateTimeImmutable($localDateTime, $tz);
-    return [
+    $row = [
         'start_ms'    => $dt->getTimestamp() * 1000,
         'duration_ms' => (int) round($hours * 3_600_000),
     ];
+    if ($task !== null) {
+        $row['task_id']   = $task['id']   ?? null;
+        $row['task_name'] = $task['name'] ?? null;
+        $row['task_url']  = $task['url']  ?? null;
+    }
+    return $row;
 }
 
 // Week 1 (Mar 30 → Apr 5): Mon 8h, Tue 4h, Fri 10h → 22h (under 40)
@@ -180,6 +188,53 @@ $aggOver = collab_aggregate_weeks($over, 40, $weeks, $tz);
 check('50h week vs 40 weekly → over',
     $aggOver[0]['total_hours'] === 50.0 && $aggOver[0]['status'] === 'over',
     $aggOver[0]['status']);
+
+// ---------------------------------------------------------------------------
+// 5. collab_aggregate_weeks — days_tasks (per-day task breakdown for popup)
+// ---------------------------------------------------------------------------
+echo "\n5. collab_aggregate_weeks — days_tasks\n";
+
+$taskA = ['id' => 'T1', 'name' => 'Task A', 'url' => 'https://clickup.com/t/T1'];
+$taskB = ['id' => 'T2', 'name' => 'Task B', 'url' => 'https://clickup.com/t/T2'];
+
+$dtEntries = [
+    // Mon: two entries on Task A (should merge into one row), one on Task B.
+    mkEntry('2026-03-30 09:00', 2.0, $tz, $taskA), // Mon A
+    mkEntry('2026-03-30 14:00', 1.5, $tz, $taskA), // Mon A (merge)
+    mkEntry('2026-03-30 16:00', 1.0, $tz, $taskB), // Mon B
+    // Tue: one entry with no task_id at all (stale/missing from cache).
+    mkEntry('2026-03-31 10:00', 3.0, $tz, ['id' => null, 'name' => null, 'url' => null]),
+];
+$aggDT = collab_aggregate_weeks($dtEntries, 40, $weeks, $tz);
+
+$w1Mon = $aggDT[0]['days_tasks']['mon'] ?? [];
+check('Mon has 2 task rows (A merged, B distinct)',
+    count($w1Mon) === 2, 'got ' . count($w1Mon));
+
+// Rows are sorted by duration desc → Task A (3.5h) first, Task B (1h) second.
+check('Mon first row = Task A (merged)',
+    ($w1Mon[0]['task_id'] ?? '') === 'T1' && ($w1Mon[0]['task_name'] ?? '') === 'Task A');
+check('Mon first row duration_ms = 3.5h',
+    ($w1Mon[0]['duration_ms'] ?? 0) === (int) round(3.5 * 3_600_000));
+check('Mon first row hours = 3.5',
+    ($w1Mon[0]['hours'] ?? null) === 3.5);
+check('Mon second row = Task B',
+    ($w1Mon[1]['task_id'] ?? '') === 'T2');
+
+$w1Tue = $aggDT[0]['days_tasks']['tue'] ?? [];
+check('Tue has 1 row (untagged entry)',  count($w1Tue) === 1);
+check('Tue row has null task_id',
+    array_key_exists('task_id', $w1Tue[0]) && $w1Tue[0]['task_id'] === null);
+check('Tue row has null task_name',
+    array_key_exists('task_name', $w1Tue[0]) && $w1Tue[0]['task_name'] === null);
+
+// Empty days should exist as empty lists (not missing keys).
+check('Wed is empty list',  is_array($aggDT[0]['days_tasks']['wed'] ?? null) && count($aggDT[0]['days_tasks']['wed']) === 0);
+check('Sun is empty list',  is_array($aggDT[0]['days_tasks']['sun'] ?? null) && count($aggDT[0]['days_tasks']['sun']) === 0);
+
+// Totals unchanged: Mon = 4.5h, Tue = 3h, week1 = 7.5h.
+check('days.mon total still 4.5h',  $aggDT[0]['days']['mon'] === 4.5);
+check('days.tue total still 3h',    $aggDT[0]['days']['tue'] === 3.0);
 
 // ---------------------------------------------------------------------------
 echo "\nPassed: $pass\nFailed: $fail\n";

@@ -1509,6 +1509,23 @@ a {
   background: var(--color-surface-elevated);
 }
 
+/* Clickable day cell (opens the tasks-of-day popup). Rendered as a <button>
+   only when it has value, so reset default button styling and add affordance. */
+button.collab-day {
+  border: 1px solid transparent;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.05s;
+}
+
+button.collab-day:hover {
+  border-color: var(--color-border, #3a3a3a);
+}
+
+button.collab-day:active {
+  transform: scale(0.98);
+}
+
 .collab-total {
   padding: 0.5rem 0.25rem;
   font-size: 0.8125rem;

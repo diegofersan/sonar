@@ -1041,6 +1041,7 @@
   /* ---------- Colaboradores (F01) ---------- */
 
   var _collabLoaded = false;
+  var _collabData = null; // full API payload, used by the day-click popup
   var DAYS_PT = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
   var DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
   var STATUS_LABEL = { under: 'Sub', ok: 'Ok', over: 'Sobre' };
@@ -1109,6 +1110,8 @@
       return;
     }
 
+    _collabData = data;
+
     var collabs = data.collaborators || [];
     if (!collabs.length) {
       listEl.innerHTML =
@@ -1120,13 +1123,14 @@
     }
 
     var html = '';
-    collabs.forEach(function (c) {
-      html += renderCollabCard(c);
+    collabs.forEach(function (c, idx) {
+      html += renderCollabCard(c, idx);
     });
     listEl.innerHTML = html;
+    bindCollabDayClicks();
   }
 
-  function renderCollabCard(c) {
+  function renderCollabCard(c, collabIdx) {
     var user = c.user || {};
     var displayName = user.username || user.email || user.id || '—';
     var weekly = Number(c.weekly_hours) || 0;
@@ -1158,14 +1162,20 @@
       '</div>';
 
     var rows = '';
-    (c.weeks || []).forEach(function (w) {
+    (c.weeks || []).forEach(function (w, weekIdx) {
       var row = '<div class="collab-week-row">' +
         '<div class="collab-week-label" title="' + escapeHtml(w.week_start || '') + '">W' +
         (w.week_number || '') + '</div>';
       DAY_KEYS.forEach(function (k) {
         var v = (w.days && typeof w.days[k] === 'number') ? w.days[k] : 0;
-        var cls = v > 0 ? 'collab-day has-val' : 'collab-day';
-        row += '<div class="' + cls + '">' + formatHours(v) + '</div>';
+        if (v > 0) {
+          // Clickable — opens popup with the tasks worked on that day.
+          row += '<button type="button" class="collab-day has-val" ' +
+            'data-collab-day="' + collabIdx + ':' + weekIdx + ':' + k + '">' +
+            formatHours(v) + '</button>';
+        } else {
+          row += '<div class="collab-day">' + formatHours(v) + '</div>';
+        }
       });
       row += '<div class="collab-total">' + formatHours(w.total_hours) + '</div>' +
         '<div class="collab-status-cell">' +
@@ -1179,6 +1189,111 @@
     return '<article class="collab-card">' + head +
       '<div class="collab-weeks">' + headRow + rows + '</div>' +
       '</article>';
+  }
+
+  function bindCollabDayClicks() {
+    document.querySelectorAll('[data-collab-day]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var parts = el.getAttribute('data-collab-day').split(':');
+        openCollabDayModal(Number(parts[0]), Number(parts[1]), parts[2]);
+      });
+    });
+  }
+
+  // PT weekday names keyed by the server's day key (mon..sun).
+  var COLLAB_DAY_PT = {
+    mon: 'Segunda', tue: 'Terça', wed: 'Quarta', thu: 'Quinta',
+    fri: 'Sexta', sat: 'Sábado', sun: 'Domingo',
+  };
+
+  function openCollabDayModal(collabIdx, weekIdx, dayKey) {
+    if (!_collabData) return;
+    var c = (_collabData.collaborators || [])[collabIdx];
+    if (!c) return;
+    var w = (c.weeks || [])[weekIdx];
+    if (!w) return;
+
+    var tasks = (w.days_tasks && w.days_tasks[dayKey]) || [];
+    var totalHours = (w.days && typeof w.days[dayKey] === 'number') ? w.days[dayKey] : 0;
+
+    // Derive the concrete date for that day (week_start is the Monday).
+    var dateSuffix = '';
+    if (w.week_start) {
+      var base = new Date(w.week_start + 'T00:00:00');
+      var offset = DAY_KEYS.indexOf(dayKey);
+      if (offset >= 0) {
+        base.setDate(base.getDate() + offset);
+        var dd = base.getDate(), mm = base.getMonth() + 1;
+        dateSuffix = (dd < 10 ? '0' : '') + dd + '/' + (mm < 10 ? '0' : '') + mm;
+      }
+    }
+
+    var displayName = (c.user && c.user.username) ? c.user.username : 'Colaborador';
+    var title = displayName + ' — ' + (COLLAB_DAY_PT[dayKey] || dayKey) +
+      (dateSuffix ? ' ' + dateSuffix : '');
+
+    var rows = tasks.length
+      ? tasks.map(renderCollabDayRow).join('')
+      : '<div class="empty-state"><p>Sem tarefas registadas neste dia.</p></div>';
+
+    var header =
+      '<div class="forecast-modal-header">' +
+      '<h3>' + escapeHtml(title) + '</h3>' +
+      '<span class="forecast-modal-count">' + formatHours(totalHours) + '</span>' +
+      '<button type="button" class="forecast-modal-close" aria-label="Fechar">&times;</button>' +
+      '</div>';
+
+    var backdrop = document.createElement('div');
+    backdrop.className = 'forecast-modal-backdrop';
+    backdrop.innerHTML =
+      '<div class="forecast-modal" role="dialog" aria-modal="true">' +
+      header +
+      '<div class="forecast-modal-body">' + rows + '</div>' +
+      '</div>';
+
+    function close() {
+      document.removeEventListener('keydown', onKey);
+      if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+    }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+
+    backdrop.addEventListener('click', function (e) {
+      if (e.target === backdrop) close();
+    });
+    backdrop.querySelector('.forecast-modal-close').addEventListener('click', close);
+    document.addEventListener('keydown', onKey);
+
+    document.body.appendChild(backdrop);
+  }
+
+  function renderCollabDayRow(t) {
+    // time_entries reference any task in the workspace, but the local `tasks`
+    // cache only has this user's tasks — so most rows come back with
+    // task_name/task_url = null. Fallback: use the task_id as label and
+    // build a ClickUp URL from it (same format the cache stores).
+    var hours = typeof t.hours === 'number' ? t.hours : 0;
+    var name, url;
+    if (t.task_name) {
+      name = t.task_name;
+      url  = t.task_url || (t.task_id ? 'https://app.clickup.com/t/' + t.task_id : '');
+    } else if (t.task_id) {
+      name = 'Task ' + t.task_id;
+      url  = 'https://app.clickup.com/t/' + t.task_id;
+    } else {
+      name = '(entry sem task)';
+      url  = '';
+    }
+
+    var titleCell = url
+      ? '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(name) + '</a>'
+      : escapeHtml(name);
+
+    return '<div class="forecast-modal-row">' +
+      '<div class="forecast-modal-title">' + titleCell + '</div>' +
+      '<div class="forecast-modal-meta">' +
+      '<span class="forecast-modal-status">' + escapeHtml(formatHours(hours)) + '</span>' +
+      '</div>' +
+      '</div>';
   }
 
   function bindTimeEntriesSync() {
