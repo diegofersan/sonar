@@ -1,6 +1,6 @@
 # F04 — Navegação mensal e totais de carga em Colaboradores
 
-**Status:** approved
+**Status:** done
 **Tipo:** feature
 **Criada em:** 2026-04-22
 
