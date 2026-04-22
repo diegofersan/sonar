@@ -1579,128 +1579,10 @@ button.collab-day:active {
   }
 }
 
-/* ---------- Plano da semana (F02) ---------- */
-.forecast-card {
-  /* Reutiliza .collab-card base styles. */
-}
-
-.forecast-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-
-.forecast-day {
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 0.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  min-height: 6.5rem;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-  transition: border-color 120ms ease, transform 120ms ease;
-}
-
-.forecast-day:hover:not(:disabled) {
-  border-color: var(--color-text-secondary);
-}
-
-.forecast-day:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
-.forecast-day.status-over {
-  border-color: rgba(248, 113, 113, 0.5);
-  background: rgba(248, 113, 113, 0.05);
-}
-
-.forecast-day.status-ok {
-  border-color: rgba(52, 211, 153, 0.35);
-}
-
-.forecast-day-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
-}
-
-.forecast-day-label {
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text);
-}
-
-.forecast-day-date {
-  font-variant-numeric: tabular-nums;
-}
-
-.forecast-day-count {
-  display: flex;
-  align-items: baseline;
-  gap: 0.25rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.forecast-count {
-  font-size: 1.75rem;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.forecast-target {
-  font-size: 0.9rem;
-  color: var(--color-text-secondary);
-}
-
-.forecast-day-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem;
-  margin-top: auto;
-  font-size: 0.75rem;
-}
-
-.forecast-overdue {
-  color: #f87171;
-  font-weight: 500;
-}
-
-.forecast-undated {
-  color: var(--color-text-secondary);
-}
-
-/* Undated badge no header do cartão (clicável) */
-.forecast-undated-badge {
-  margin-left: auto;
-  background: transparent;
-  border: 1px dashed var(--color-border);
-  color: var(--color-text-secondary);
-  border-radius: 999px;
-  padding: 0.25rem 0.75rem;
-  font-size: 0.75rem;
-  cursor: pointer;
-  font: inherit;
-  line-height: 1.2;
-}
-
-.forecast-undated-badge:hover {
-  border-style: solid;
-  border-color: var(--color-text-secondary);
-  color: var(--color-text);
-}
-
-/* Modal — tasks do dia / sem data */
+/* Modal — usado pelo popup de tasks do dia no Colaboradores. Classes
+   ainda prefixadas com `forecast-` por razões históricas (introduzidas
+   no F02); R01 remove F02 mas mantém o modal porque o popup do
+   Colaboradores depende dele. Rename → .day-modal-* em commit separado. */
 .forecast-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1799,13 +1681,3 @@ button.collab-day:active {
   font-weight: 500;
 }
 
-@media (max-width: 720px) {
-  .forecast-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .forecast-undated-badge {
-    margin-left: 0;
-    margin-top: 0.5rem;
-    flex-basis: 100%;
-  }
-}
