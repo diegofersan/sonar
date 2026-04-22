@@ -1456,6 +1456,31 @@ a {
   color: var(--color-text-secondary);
 }
 
+.collab-month-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  flex-wrap: wrap;
+}
+
+.collab-month-summary strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.collab-month-sep {
+  color: var(--color-border);
+}
+
+.collab-month-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .collab-weeks {
   display: grid;
   gap: 0.25rem;

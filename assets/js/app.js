@@ -1216,6 +1216,21 @@
       '</div>' +
       '</header>';
 
+    // Month summary: Expectável / Trabalhado + status badge. `month_totals`
+    // is filled in by api/collaborators.php via collab_month_totals().
+    var summary = '';
+    if (c.month_totals) {
+      var mt = c.month_totals;
+      summary = '<div class="collab-month-summary">' +
+        '<span class="collab-month-item">Expectável: <strong>' + formatHours(mt.expected_hours) + '</strong></span>' +
+        '<span class="collab-month-sep">·</span>' +
+        '<span class="collab-month-item">Trabalhado: <strong>' + formatHours(mt.worked_hours) + '</strong></span>' +
+        '<span class="collab-badge ' + escapeHtml(mt.status || 'under') + '">' +
+        (STATUS_LABEL[mt.status] || mt.status || '—') +
+        '</span>' +
+        '</div>';
+    }
+
     // Week table: header row + one row per ISO week
     var headRow = '<div class="collab-week-row collab-week-head">' +
       '<div class="collab-week-label">Sem</div>';
@@ -1249,7 +1264,7 @@
       rows += row;
     });
 
-    return '<article class="collab-card">' + head +
+    return '<article class="collab-card">' + head + summary +
       '<div class="collab-weeks">' + headRow + rows + '</div>' +
       '</article>';
   }
