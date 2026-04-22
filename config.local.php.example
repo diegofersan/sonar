@@ -3,7 +3,21 @@
 // Get them from: https://app.clickup.com/settings/integrations (create an OAuth app)
 
 return [
-    'client_id' => 'YOUR_CLIENT_ID_HERE',
+    'client_id'     => 'YOUR_CLIENT_ID_HERE',
     'client_secret' => 'YOUR_CLIENT_SECRET_HERE',
-    'redirect_uri' => 'http://localhost:8080/oauth/callback.php',
+    'redirect_uri'  => 'http://localhost:8080/oauth/callback.php',
+
+    // F01 — Colaboradores page (department head only).
+    // Leave department_head_user_id empty to disable the feature.
+    'department_head_user_id' => '',
+
+    // Weekly hours per ClickUp user_id. Used by the "Colaboradores" page to
+    // classify each week as under / ok / over capacity.
+    // ClickUp API does not expose weekly_hours on this plan, so we configure
+    // it manually here. Users missing from this map fall back to
+    // default_weekly_hours.
+    'weekly_hours_per_user' => [
+        // '473908' => 40,
+    ],
+    'default_weekly_hours' => 40,
 ];

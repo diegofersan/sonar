@@ -156,6 +156,41 @@ function validate_csrf(?string $token): bool
 }
 
 /**
+ * Is the authenticated user the department head? (F01 — Colaboradores).
+ *
+ * Server-side gate for the admin-only "Colaboradores" view and its endpoints.
+ * Cast both sides to string because ClickUp returns user.id as int but the
+ * configured constant is a string.
+ */
+function is_department_head(): bool
+{
+    $user = get_user();
+    if (empty($user['id'])) {
+        return false;
+    }
+    $headId = defined('DEPARTMENT_HEAD_USER_ID') ? DEPARTMENT_HEAD_USER_ID : '';
+    if ($headId === '') {
+        return false;
+    }
+    return (string) $user['id'] === (string) $headId;
+}
+
+/**
+ * Weekly hours configured for a given ClickUp user_id (F01).
+ *
+ * Looks up WEEKLY_HOURS_PER_USER; falls back to DEFAULT_WEEKLY_HOURS (40 if
+ * unset) for user_ids not in the map.
+ */
+function get_weekly_hours(string $user_id): int
+{
+    $map = defined('WEEKLY_HOURS_PER_USER') ? WEEKLY_HOURS_PER_USER : [];
+    if ($user_id !== '' && isset($map[$user_id])) {
+        return (int) $map[$user_id];
+    }
+    return defined('DEFAULT_WEEKLY_HOURS') ? (int) DEFAULT_WEEKLY_HOURS : 40;
+}
+
+/**
  * Read and validate the CSRF token from the X-CSRF-Token header or JSON body
  * field `_csrf`. Sends 403 and exits if validation fails.
  */

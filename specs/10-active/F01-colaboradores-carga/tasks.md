@@ -63,7 +63,7 @@ Resumo:
 
 ---
 
-### [ ] 4. Auth: chefe de departamento + config de weekly_hours
+### [x] 4. Auth: chefe de departamento + config de weekly_hours
 
 - `config.php`:
   - Constante `DEPARTMENT_HEAD_USER_ID` (override em `config.local.php` e env var, como as credenciais OAuth).
