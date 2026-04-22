@@ -107,7 +107,7 @@ Em `includes/clickup.php`, adicionar os helpers necessários conforme o spike:
 
 ---
 
-### [ ] 7. `api/collaborators.php`
+### [x] 7. `api/collaborators.php`
 
 - GET: valida auth + `is_department_head()`. Para o mês corrente:
   - Lista membros do grupo design (via helpers da Tarefa 5).

@@ -21,6 +21,7 @@ try {
     require_once __DIR__ . '/../includes/session.php';
     require_once __DIR__ . '/../includes/database.php';
     require_once __DIR__ . '/../includes/clickup.php';
+    require_once __DIR__ . '/../includes/collaborators.php';
 
     init_session();
 
@@ -165,12 +166,13 @@ try {
         exit;
     }
 
-    // Current-month window in UTC, half-open: [first day 00:00, next month 00:00)
-    $tz       = new DateTimeZone('UTC');
-    $firstDay = new DateTimeImmutable('first day of this month 00:00:00', $tz);
-    $nextDay  = new DateTimeImmutable('first day of next month 00:00:00',  $tz);
-    $startMs  = $firstDay->getTimestamp() * 1000;
-    $endMs    = $nextDay->getTimestamp()  * 1000;
+    // Window covers every ISO week that has at least one day in the current
+    // month (Europe/Lisbon). Matches what api/collaborators.php aggregates,
+    // so the sync does not leave boundary-straddling weeks half-populated.
+    $tz = new DateTimeZone('Europe/Lisbon');
+    [$windowStart, $windowEnd] = collab_month_window($tz);
+    $startMs = $windowStart->getTimestamp() * 1000;
+    $endMs   = $windowEnd->getTimestamp()   * 1000;
 
     db_sync_progress($logId, 'A importar time entries do mês...');
 
