@@ -173,7 +173,11 @@ if (empty($_SESSION['clickup_workspace'])) {
             <div class="toolbar">
                 <div class="toolbar-left">
                     <h2>Colaboradores</h2>
-                    <span id="collab-month-label" class="text-secondary"></span>
+                    <div class="collab-month-nav">
+                        <button id="collab-prev" class="btn btn-secondary btn-sm" aria-label="Mês anterior">&larr;</button>
+                        <span id="collab-month-label" class="text-secondary"></span>
+                        <button id="collab-next" class="btn btn-secondary btn-sm" aria-label="Mês seguinte">&rarr;</button>
+                    </div>
                 </div>
                 <div class="toolbar-right">
                     <span id="collab-last-sync" class="text-secondary"></span>

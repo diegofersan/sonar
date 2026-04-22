@@ -1042,6 +1042,7 @@
 
   var _collabLoaded = false;
   var _collabData = null; // full API payload, used by the day-click popup
+  var _collabMonth = null; // selected month as 'YYYY-MM' or null = current
   var DAYS_PT = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
   var DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
   var STATUS_LABEL = { under: 'Sub', ok: 'Ok', over: 'Sobre' };
@@ -1065,15 +1066,63 @@
            ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
-  function formatMonthLabel(startISO) {
-    if (!startISO) return '';
-    // `month_start` is the Monday of the first ISO week overlapping the month.
-    // The calendar-month label is more useful — derive it from today.
-    var now = new Date();
-    return MONTH_PT[now.getMonth()] + ' ' + now.getFullYear();
+  // Pick the label from the API response's `month_start` (first Monday of the
+  // window) but derive the calendar month from the last day of that window —
+  // `month_start` can legitimately sit in the previous calendar month when
+  // the 1st falls on Tue/Wed/etc. Cheap approximation: add 7 days, which
+  // always lands inside the target month.
+  function formatMonthLabel(monthStartISO) {
+    if (!monthStartISO) return '';
+    var d = new Date(monthStartISO + 'T00:00:00');
+    d.setDate(d.getDate() + 7);
+    return MONTH_PT[d.getMonth()] + ' ' + d.getFullYear();
   }
 
-  async function fetchCollaborators() {
+  function currentYearMonth() {
+    var n = new Date();
+    var pad = function (x) { return x < 10 ? '0' + x : '' + x; };
+    return n.getFullYear() + '-' + pad(n.getMonth() + 1);
+  }
+
+  // Parse '#collaborators/YYYY-MM' → 'YYYY-MM'. Anything else (no sub-segment,
+  // different view, malformed) → null = current month.
+  function parseCollabHashMonth() {
+    var raw = (location.hash || '').replace(/^#/, '');
+    var parts = raw.split('/');
+    if (parts[0] !== 'collaborators' || !parts[1]) return null;
+    return /^\d{4}-(0[1-9]|1[0-2])$/.test(parts[1]) ? parts[1] : null;
+  }
+
+  function setCollabHash(month) {
+    var base = '#collaborators';
+    var next = month ? base + '/' + month : base;
+    // Avoid firing a hashchange loop if it already matches.
+    if (location.hash !== next) {
+      history.replaceState(null, '', next);
+    }
+  }
+
+  // Shift `_collabMonth` by `delta` months. `null` = current month; shifting
+  // from null means "last/next from today". Clamp to current month on top.
+  function navCollabMonth(delta) {
+    var base = _collabMonth || currentYearMonth();
+    var parts = base.split('-');
+    var y = Number(parts[0]);
+    var m = Number(parts[1]);
+    m += delta;
+    while (m < 1)  { m += 12; y -= 1; }
+    while (m > 12) { m -= 12; y += 1; }
+    var pad = function (x) { return x < 10 ? '0' + x : '' + x; };
+    var next = y + '-' + pad(m);
+    // If user navigates back to current month, clear the hash sub-segment.
+    _collabMonth = (next === currentYearMonth()) ? null : next;
+    // Never go into the future.
+    if (_collabMonth && _collabMonth > currentYearMonth()) return;
+    setCollabHash(_collabMonth);
+    fetchCollaborators(_collabMonth);
+  }
+
+  async function fetchCollaborators(month) {
     var listEl = document.getElementById('collab-list');
     if (!listEl) return;
 
@@ -1083,13 +1132,26 @@
       '<span>A carregar colaboradores...</span>' +
       '</div>';
 
+    var url = '/api/collaborators.php' + (month ? '?month=' + encodeURIComponent(month) : '');
     try {
-      var data = await apiFetch('/api/collaborators.php');
+      var data = await apiFetch(url);
       renderCollaborators(data);
     } catch (err) {
       listEl.innerHTML = '<div class="error-message">Erro: ' + escapeHtml(err.message) + '</div>';
       Toast.error('Erro ao carregar colaboradores: ' + err.message);
     }
+  }
+
+  function updateCollabNavButtons() {
+    var nextBtn = document.getElementById('collab-next');
+    if (nextBtn) nextBtn.disabled = (_collabMonth === null);
+  }
+
+  function bindCollabMonthNav() {
+    var prev = document.getElementById('collab-prev');
+    var next = document.getElementById('collab-next');
+    if (prev) prev.addEventListener('click', function () { navCollabMonth(-1); });
+    if (next) next.addEventListener('click', function () { navCollabMonth(+1); });
   }
 
   function renderCollaborators(data) {
@@ -1100,6 +1162,7 @@
 
     if (monthEl) monthEl.textContent = formatMonthLabel(data.month_start);
     if (lastSyncEl) lastSyncEl.textContent = formatLastSync(data.last_sync);
+    updateCollabNavButtons();
 
     if (!data.last_sync) {
       listEl.innerHTML =
@@ -1301,9 +1364,14 @@
     btn.innerHTML = '<span class="loading-spinner" style="width:16px;height:16px;border-width:2px;"></span> A sincronizar...';
 
     try {
-      await apiFetch('/api/sync_time_entries.php', {
+      var payload = {};
+      if (force) payload.force = true;
+      if (_collabMonth) payload.month = _collabMonth;
+      var syncUrl = '/api/sync_time_entries.php' +
+        (_collabMonth ? '?month=' + encodeURIComponent(_collabMonth) : '');
+      await apiFetch(syncUrl, {
         method: 'POST',
-        body: JSON.stringify(force ? { force: true } : {}),
+        body: JSON.stringify(payload),
       });
       Toast.show(force ? 'Sync forçado iniciado...' : 'Sync iniciado...');
       await pollTimeEntriesSync(btn, originalText);
@@ -1332,7 +1400,7 @@
       try {
         var status = await apiFetch('/api/sync_time_entries.php');
         if (!status.running) {
-          await fetchCollaborators();
+          await fetchCollaborators(_collabMonth);
           Toast.success('Sync de colaboradores concluído');
           btn.disabled = false;
           btn.classList.remove('syncing');
@@ -1373,10 +1441,15 @@
     document.querySelectorAll('.app-navbar .nav-link[data-nav]').forEach(function (a) {
       a.classList.toggle('active', a.getAttribute('data-nav') === name);
     });
-    // Lazy-load the collaborators view the first time it's shown.
-    if (name === 'collaborators' && !_collabLoaded) {
-      _collabLoaded = true;
-      fetchCollaborators();
+    // Lazy-load the collaborators view the first time it's shown, and on
+    // subsequent shows refresh if the hash month has changed.
+    if (name === 'collaborators') {
+      var hashMonth = parseCollabHashMonth();
+      if (!_collabLoaded || hashMonth !== _collabMonth) {
+        _collabLoaded = true;
+        _collabMonth  = hashMonth;
+        fetchCollaborators(_collabMonth);
+      }
     }
   }
 
@@ -1386,12 +1459,22 @@
     links.forEach(function (a) {
       a.addEventListener('click', function (e) {
         e.preventDefault();
-        showView(a.getAttribute('data-nav'));
+        var target = a.getAttribute('data-nav');
+        // Keep the URL hash in sync so refresh + deep-link keep working.
+        // For collaborators, preserve any month sub-segment already set.
+        if (target === 'collaborators' && _collabMonth) {
+          setCollabHash(_collabMonth);
+        } else {
+          history.replaceState(null, '', '#' + target);
+        }
+        showView(target);
       });
     });
     // Pick the initial view from the URL hash (so deep links / refresh work).
-    var initial = (location.hash || '').replace(/^#/, '');
-    if (initial !== 'editorial' && initial !== 'collaborators') initial = 'editorial';
+    // Format: '#editorial' | '#collaborators' | '#collaborators/YYYY-MM'.
+    var raw = (location.hash || '').replace(/^#/, '');
+    var top = raw.split('/')[0];
+    var initial = (top === 'editorial' || top === 'collaborators') ? top : 'editorial';
     showView(initial);
   }
 
@@ -1416,6 +1499,7 @@
     bindLogout();
     bindNotifications();
     bindTimeEntriesSync();
+    bindCollabMonthNav();
     bindNavbar();
   }
 
