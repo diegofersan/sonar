@@ -903,7 +903,15 @@ function db_cleanup_notifications(string $workspace_id): void
  * @param string $workspace_id Workspace / team ID the entries belong to.
  * @return int                 Number of rows actually inserted/replaced.
  */
-function db_upsert_time_entries(array $entries, string $workspace_id): int
+/**
+ * @param array  $entries    Raw time entries from ClickUp.
+ * @param string $workspace_id
+ * @param array  $parent_map Optional [task_id => ['parent_task_id'=>..., 'parent_name'=>...]]
+ *                           produced by the parent resolver in the sync
+ *                           endpoint. Missing keys mean "no parent known" and
+ *                           the columns stay NULL.
+ */
+function db_upsert_time_entries(array $entries, string $workspace_id, array $parent_map = []): int
 {
     $pdo = db();
     $pdo->beginTransaction();
@@ -912,9 +920,11 @@ function db_upsert_time_entries(array $entries, string $workspace_id): int
     try {
         $stmt = $pdo->prepare(<<<'SQL'
             INSERT OR REPLACE INTO time_entries
-                (id, user_id, task_id, workspace_id, start_ms, duration_ms, synced_at)
+                (id, user_id, task_id, workspace_id, start_ms, duration_ms, synced_at,
+                 task_name, task_url, parent_task_id, parent_name)
             VALUES
-                (:id, :user_id, :task_id, :workspace_id, :start_ms, :duration_ms, :synced_at)
+                (:id, :user_id, :task_id, :workspace_id, :start_ms, :duration_ms, :synced_at,
+                 :task_name, :task_url, :parent_task_id, :parent_name)
         SQL);
 
         $now = time();
@@ -927,18 +937,34 @@ function db_upsert_time_entries(array $entries, string $workspace_id): int
                 // Entry without task → ignore (F01 spec).
                 continue;
             }
+            $taskId = (string) $taskId;
 
             $userId = (string) ($e['user']['id'] ?? $e['assignee'] ?? '');
             if ($userId === '') continue;
 
+            // Task name comes from the time entries response; URL is derivable
+            // from the id (ClickUp canonical format).
+            $taskName = isset($e['task']['name']) && $e['task']['name'] !== ''
+                ? (string) $e['task']['name']
+                : null;
+            $taskUrl = 'https://app.clickup.com/t/' . $taskId;
+
+            $parent = $parent_map[$taskId] ?? null;
+            $parentId   = $parent['parent_task_id'] ?? null;
+            $parentName = $parent['parent_name']    ?? null;
+
             $stmt->execute([
-                ':id'           => $id,
-                ':user_id'      => $userId,
-                ':task_id'      => (string) $taskId,
-                ':workspace_id' => $workspace_id,
-                ':start_ms'     => (int) ($e['start'] ?? 0),
-                ':duration_ms'  => (int) ($e['duration'] ?? 0),
-                ':synced_at'    => $now,
+                ':id'             => $id,
+                ':user_id'        => $userId,
+                ':task_id'        => $taskId,
+                ':workspace_id'   => $workspace_id,
+                ':start_ms'       => (int) ($e['start'] ?? 0),
+                ':duration_ms'    => (int) ($e['duration'] ?? 0),
+                ':synced_at'      => $now,
+                ':task_name'      => $taskName,
+                ':task_url'       => $taskUrl,
+                ':parent_task_id' => $parentId,
+                ':parent_name'    => $parentName,
             ]);
             $count++;
         }
