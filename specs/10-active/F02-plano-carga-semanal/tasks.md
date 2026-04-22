@@ -26,7 +26,7 @@ vai com commit próprio por incluir revisão da spec + do próprio `tasks.md`.
 
 ## Fase B — Config
 
-### [ ] 3. Config: alvo diário de tasks por colaborador (D9)
+### [x] 3. Config: alvo diário de tasks por colaborador (D9)
 
 - `config.php`:
   - `DAILY_TASKS_PER_USER` — mapa `user_id => int` (default `[]`), override em

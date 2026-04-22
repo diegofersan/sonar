@@ -20,4 +20,11 @@ return [
         // '473908' => 40,
     ],
     'default_weekly_hours' => 40,
+
+    // F02 — Plano da semana (daily task count target per collaborator).
+    // Users missing from this map fall back to default_daily_tasks.
+    'daily_tasks_per_user' => [
+        // '473908' => 5,
+    ],
+    'default_daily_tasks' => 5,
 ];
