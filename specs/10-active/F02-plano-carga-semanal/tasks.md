@@ -45,7 +45,7 @@ vai com commit próprio por incluir revisão da spec + do próprio `tasks.md`.
 
 ## Fase C — Lógica preditiva
 
-### [ ] 4. Pure helpers: distribuição + agregação por contagem
+### [x] 4. Pure helpers: distribuição + agregação por contagem
 
 `includes/workload.php` — helpers puros, testáveis sem DB/HTTP:
 
