@@ -191,6 +191,7 @@ if (empty($_SESSION['clickup_workspace'])) {
                     </button>
                 </div>
             </div>
+            <div id="collab-burnup" class="collab-burnup" style="display:none;"></div>
             <div id="collab-list"></div>
         </section>
         <?php endif; ?>

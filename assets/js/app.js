@@ -1185,12 +1185,208 @@
       return;
     }
 
+    renderCollabBurnup(data);
+
     var html = '';
     collabs.forEach(function (c, idx) {
       html += renderCollabCard(c, idx);
     });
     listEl.innerHTML = html;
     bindCollabDayClicks();
+  }
+
+  /* ---------- Burn-up chart (F05) ---------- */
+
+  // Compute the aggregate burn-up series from the collaborators payload.
+  // Returns { weeks: [{label, meta_h, real_h|null}], meta_total, real_total }.
+  // `real_h` is null for ISO weeks whose Monday is after today — the polyline
+  // stops there instead of dropping to zero for the unlived future.
+  function computeCollabBurnup(data) {
+    var weeksMeta = (data && data.weeks_meta) || [];
+    var collabs   = (data && data.collaborators) || [];
+
+    var teamWeekly = collabs.reduce(function (acc, c) {
+      return acc + (Number(c.weekly_hours) || 0);
+    }, 0);
+
+    // Sum total_hours across all collabs for week index k.
+    function realForWeek(k) {
+      var sum = 0;
+      for (var i = 0; i < collabs.length; i++) {
+        var wk = (collabs[i].weeks || [])[k];
+        sum += wk && typeof wk.total_hours === 'number' ? wk.total_hours : 0;
+      }
+      return sum;
+    }
+
+    var now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    var out = [];
+    var cumReal = 0;
+    for (var k = 0; k < weeksMeta.length; k++) {
+      var meta_h = teamWeekly * (k + 1);
+      var weekMondayISO = weeksMeta[k].week_start; // 'YYYY-MM-DD'
+      var weekMonday = new Date(weekMondayISO + 'T00:00:00');
+      var isFuture = weekMonday > now;
+      var real_h = null;
+      if (!isFuture) {
+        cumReal += realForWeek(k);
+        real_h = Math.round(cumReal * 100) / 100;
+      }
+      out.push({
+        label:  'W' + weeksMeta[k].week_number,
+        meta_h: Math.round(meta_h * 100) / 100,
+        real_h: real_h,
+      });
+    }
+
+    var metaTotal = teamWeekly * weeksMeta.length;
+    // Last non-null real is the current "realized" total
+    var realTotal = 0;
+    for (var j = out.length - 1; j >= 0; j--) {
+      if (out[j].real_h !== null) { realTotal = out[j].real_h; break; }
+    }
+
+    return {
+      weeks: out,
+      meta_total: Math.round(metaTotal * 100) / 100,
+      real_total: realTotal,
+    };
+  }
+
+  function renderCollabBurnup(data) {
+    var host = document.getElementById('collab-burnup');
+    if (!host) return;
+
+    // Hide when there's nothing to show (pre-sync or no members).
+    var collabs = (data && data.collaborators) || [];
+    if (!data || !data.last_sync || !collabs.length) {
+      host.style.display = 'none';
+      host.innerHTML = '';
+      return;
+    }
+
+    var series = computeCollabBurnup(data);
+    var weeks  = series.weeks;
+    if (!weeks.length) {
+      host.style.display = 'none';
+      host.innerHTML = '';
+      return;
+    }
+
+    // Layout in viewBox units — CSS scales to container width.
+    var W = 720, H = 200;
+    var pad = { top: 20, right: 24, bottom: 32, left: 44 };
+    var innerW = W - pad.left - pad.right;
+    var innerH = H - pad.top - pad.bottom;
+
+    // Y scale: top at max(meta_total, max_real) rounded up to the next 40h.
+    var maxReal = 0;
+    weeks.forEach(function (w) {
+      if (w.real_h !== null && w.real_h > maxReal) maxReal = w.real_h;
+    });
+    var yMax = Math.max(series.meta_total, maxReal);
+    yMax = Math.max(40, Math.ceil(yMax / 40) * 40);
+
+    // X positions: one per week, evenly spaced.
+    var n = weeks.length;
+    function xFor(k) {
+      if (n === 1) return pad.left + innerW / 2;
+      return pad.left + (innerW * k) / (n - 1);
+    }
+    function yFor(h) {
+      return pad.top + innerH - (innerH * h) / yMax;
+    }
+
+    // Build polylines.
+    var metaPts = weeks.map(function (w, k) {
+      return xFor(k).toFixed(1) + ',' + yFor(w.meta_h).toFixed(1);
+    }).join(' ');
+
+    // Real line: break at nulls — just take the prefix up to the last point.
+    var realPtsArr = [];
+    for (var k = 0; k < weeks.length; k++) {
+      if (weeks[k].real_h === null) break;
+      realPtsArr.push(xFor(k).toFixed(1) + ',' + yFor(weeks[k].real_h).toFixed(1));
+    }
+    var realPts = realPtsArr.join(' ');
+
+    // Y axis gridlines at 0, yMax/4, yMax/2, 3*yMax/4, yMax.
+    var gridLines = '';
+    var labels    = '';
+    for (var gi = 0; gi <= 4; gi++) {
+      var val = (yMax * gi) / 4;
+      var yy  = yFor(val).toFixed(1);
+      gridLines += '<line class="grid" x1="' + pad.left + '" y1="' + yy +
+                   '" x2="' + (pad.left + innerW) + '" y2="' + yy + '"/>';
+      labels   += '<text class="axis-label" x="' + (pad.left - 6) +
+                  '" y="' + (parseFloat(yy) + 3.5) + '" text-anchor="end">' +
+                  Math.round(val) + 'h</text>';
+    }
+
+    // X labels (week numbers).
+    var xLabels = '';
+    weeks.forEach(function (w, k) {
+      xLabels += '<text class="axis-label" x="' + xFor(k).toFixed(1) +
+                 '" y="' + (pad.top + innerH + 16) + '" text-anchor="middle">' +
+                 escapeHtml(w.label) + '</text>';
+    });
+
+    // Dots + tooltips at each week intersection.
+    var metaDots = '';
+    var realDots = '';
+    weeks.forEach(function (w, k) {
+      var cx = xFor(k).toFixed(1);
+      var delta = (w.real_h !== null) ? (w.real_h - w.meta_h) : null;
+      var tipMeta = w.label + ' · Meta: ' + w.meta_h + 'h';
+      var tipReal = w.label + ' · Meta: ' + w.meta_h + 'h · Real: ' +
+        (w.real_h === null ? '—' : w.real_h + 'h') +
+        (delta !== null ? ' · Δ ' + (delta >= 0 ? '+' : '') + delta.toFixed(1) + 'h' : '');
+      metaDots += '<circle class="meta-dot" cx="' + cx + '" cy="' + yFor(w.meta_h).toFixed(1) +
+                  '" r="3"><title>' + escapeHtml(tipMeta) + '</title></circle>';
+      if (w.real_h !== null) {
+        realDots += '<circle class="real-dot" cx="' + cx + '" cy="' + yFor(w.real_h).toFixed(1) +
+                    '" r="3"><title>' + escapeHtml(tipReal) + '</title></circle>';
+      }
+    });
+
+    // Legend text: "Abril 2026 · Meta: Xh · Trabalhado: Yh · ±Zh"
+    var monthLabel = formatMonthLabel(data.month_start);
+    var delta = series.real_total - series.meta_total;
+    // Only meaningful to show delta when we have at least one real point.
+    var hasReal = weeks.some(function (w) { return w.real_h !== null; });
+    var deltaStr = hasReal
+      ? ' · ' + (delta >= 0 ? '+' : '') + delta.toFixed(1) + 'h'
+      : '';
+
+    var legend =
+      '<div class="collab-burnup-legend">' +
+        '<span class="collab-burnup-month">' + escapeHtml(monthLabel) + '</span>' +
+        '<span class="collab-burnup-sep">·</span>' +
+        '<span><span class="collab-burnup-swatch meta"></span>Meta: <strong>' +
+          series.meta_total + 'h</strong></span>' +
+        '<span class="collab-burnup-sep">·</span>' +
+        '<span><span class="collab-burnup-swatch real"></span>Trabalhado: <strong>' +
+          (hasReal ? series.real_total + 'h' : '—') + '</strong></span>' +
+        (deltaStr ? '<span class="collab-burnup-delta ' + (delta >= 0 ? 'pos' : 'neg') +
+          '">' + deltaStr + '</span>' : '') +
+      '</div>';
+
+    var svg =
+      '<svg class="collab-burnup-svg" viewBox="0 0 ' + W + ' ' + H +
+        '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Burn-up mensal">' +
+        gridLines +
+        '<polyline class="meta-line" points="' + metaPts + '"/>' +
+        (realPts ? '<polyline class="real-line" points="' + realPts + '"/>' : '') +
+        metaDots +
+        realDots +
+        labels +
+        xLabels +
+      '</svg>';
+
+    host.innerHTML = legend + svg;
+    host.style.display = '';
   }
 
   function renderCollabCard(c, collabIdx) {
