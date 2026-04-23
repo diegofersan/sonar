@@ -1,6 +1,6 @@
 # B01 — Sync de time entries morre aos 120s em meses com mais volume
 
-**Status:** approved
+**Status:** done
 **Tipo:** bug
 **Severidade:** alta
 **Criada em:** 2026-04-22
