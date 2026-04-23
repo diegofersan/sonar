@@ -12,7 +12,10 @@
  */
 
 ini_set('display_errors', '0');
-ini_set('max_execution_time', '120');
+// 600s (10 min) é folga confortável para meses com mais volume — 139+
+// subtasks × ~2 API calls cada, ao rate limit do ClickUp, passa de 120s.
+// Ver specs/20-done/B01-sync-timeout.
+ini_set('max_execution_time', '600');
 error_reporting(E_ALL & ~E_DEPRECATED);
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
