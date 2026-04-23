@@ -1481,6 +1481,119 @@ a {
   gap: 0.5rem;
 }
 
+/* Burn-up chart (F05) ----------------------------------------------------- */
+
+.collab-burnup {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1.25rem 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.collab-burnup-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.collab-burnup-legend strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.collab-burnup-month {
+  font-weight: 600;
+  color: var(--color-text);
+  text-transform: capitalize;
+}
+
+.collab-burnup-sep {
+  color: var(--color-border);
+}
+
+.collab-burnup-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 0.3rem;
+  vertical-align: -1px;
+}
+
+.collab-burnup-swatch.meta {
+  background: var(--color-text-secondary);
+  opacity: 0.6;
+}
+
+.collab-burnup-swatch.real {
+  background: var(--color-primary);
+}
+
+.collab-burnup-delta.pos {
+  color: #34d399;
+  font-weight: 600;
+}
+
+.collab-burnup-delta.neg {
+  color: #f87171;
+  font-weight: 600;
+}
+
+.collab-burnup-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.collab-burnup-svg .grid {
+  stroke: var(--color-border);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  opacity: 0.6;
+}
+
+.collab-burnup-svg .axis-label {
+  fill: var(--color-text-secondary);
+  font-size: 10px;
+  font-family: inherit;
+}
+
+.collab-burnup-svg .meta-line {
+  fill: none;
+  stroke: var(--color-text-secondary);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  opacity: 0.7;
+}
+
+.collab-burnup-svg .real-line {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 2.25;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.collab-burnup-svg .meta-dot {
+  fill: var(--color-text-secondary);
+  opacity: 0.6;
+}
+
+.collab-burnup-svg .real-dot {
+  fill: var(--color-primary);
+}
+
+@media (max-width: 720px) {
+  .collab-burnup {
+    padding: 0.5rem 0.75rem;
+  }
+}
+
 .collab-weeks {
   display: grid;
   gap: 0.25rem;
