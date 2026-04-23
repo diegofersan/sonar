@@ -1,6 +1,6 @@
 # F05 — Gráfico burn-up na primeira dobra de Colaboradores
 
-**Status:** approved
+**Status:** done
 **Tipo:** feature
 **Criada em:** 2026-04-22
 
