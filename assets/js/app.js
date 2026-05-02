@@ -1046,6 +1046,18 @@
   var DAYS_PT = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
   var DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
   var STATUS_LABEL = { under: 'Sub', ok: 'Ok', over: 'Sobre' };
+
+  // Day-of-month (1..31) for a given DAY_KEYS entry within an ISO week whose
+  // Monday is `weekStart` ('YYYY-MM-DD'). Returns null if inputs are invalid.
+  function collabDayOfMonth(weekStart, dayKey) {
+    if (!weekStart) return null;
+    var offset = DAY_KEYS.indexOf(dayKey);
+    if (offset < 0) return null;
+    var base = new Date(weekStart + 'T00:00:00');
+    if (isNaN(base.getTime())) return null;
+    base.setDate(base.getDate() + offset);
+    return base.getDate();
+  }
   var MONTH_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
                   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
@@ -1442,13 +1454,18 @@
         (w.week_number || '') + '</div>';
       DAY_KEYS.forEach(function (k) {
         var v = (w.days && typeof w.days[k] === 'number') ? w.days[k] : 0;
+        var dom = collabDayOfMonth(w.week_start, k);
+        var domHtml = dom != null ? '<span class="collab-day-num">' + dom + '</span>' : '';
         if (v > 0) {
           // Clickable — opens popup with the tasks worked on that day.
           row += '<button type="button" class="collab-day has-val" ' +
             'data-collab-day="' + collabIdx + ':' + weekIdx + ':' + k + '">' +
-            formatHours(v) + '</button>';
+            '<span class="collab-day-hours">' + formatHours(v) + '</span>' +
+            domHtml + '</button>';
         } else {
-          row += '<div class="collab-day">' + formatHours(v) + '</div>';
+          row += '<div class="collab-day">' +
+            '<span class="collab-day-hours">' + formatHours(v) + '</span>' +
+            domHtml + '</div>';
         }
       });
       row += '<div class="collab-total">' + formatHours(w.total_hours) + '</div>' +
