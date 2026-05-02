@@ -1631,6 +1631,7 @@ a {
 }
 
 .collab-day {
+  position: relative;
   padding: 0.5rem 0.25rem;
   font-size: 0.8125rem;
   text-align: center;
@@ -1640,6 +1641,21 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Tiny day-of-month indicator in the bottom-right corner of each data cell.
+   Header cells (SEG/TER/...) don't get one because the JS only emits it for
+   data rows. */
+.collab-day-num {
+  position: absolute;
+  bottom: 2px;
+  right: 4px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--color-text-secondary);
+  opacity: 0.55;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
 }
 
 .collab-day.has-val {
